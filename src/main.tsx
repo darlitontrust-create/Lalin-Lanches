@@ -17,4 +17,9 @@ new MutationObserver(() => {
   }
 }).observe(document.body, { childList: true, subtree: true });
 
+// App instalável (PWA): registra o service worker
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { /* ignora */ }));
+}
+
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

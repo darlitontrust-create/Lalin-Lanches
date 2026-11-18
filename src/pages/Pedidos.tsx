@@ -218,7 +218,7 @@ function Fila({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: Order
     const canEdit = !o.paid && (o.status === 'aguardando' || o.status === 'producao');
     return (
       <article className="tk">
-        <div className="row sb"><span className="n">nº {o.num}</span><span className="mute">{hm(o.at)} · {min} min</span></div>
+        <div className="row sb"><span className="n">nº {o.num}</span><span className="mute">{hm(o.at)} · {min} min · por {o.by}</span></div>
         <div style={{ marginTop: 4 }}><b>{o.client}</b>{o.note && <> · <span className="mute">{o.note}</span></>}</div>
         <div className="row" style={{ marginTop: 6, gap: 6 }}><span className={'bd ' + (o.mode === 'viagem' ? 'v' : 'g')}>{ML[o.mode]}</span>
           {o.status === 'cancelado' ? <span className="bd low">Cancelado</span> : o.paid ? <span className="bd ok">Pago · {o.pay?.m}</span> : <span className="bd y">A cobrar · {brl(orderTotal(o))}</span>}</div>

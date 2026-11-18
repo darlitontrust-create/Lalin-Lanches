@@ -7,6 +7,7 @@ import type { AppUser, Caixa, Config, PermKey, Product } from './types';
 import { DEFAULT_CONFIG, seedAll } from './seed';
 import { hm } from './utils';
 import { Icon, Logo, ModalHead, Wordmark } from './components/ui';
+import { InstallButton } from './components/Install';
 import Pedidos from './pages/Pedidos';
 import CaixaPage from './pages/Caixa';
 import Estoque from './pages/Estoque';
@@ -113,8 +114,13 @@ function Login({ err }: { err: string }) {
       </button>
       {(err || e2) && <div className="err">{err || e2}</div>}
       <p className="mute" style={{ marginTop: 18 }}>Somente contas Google liberadas pelo administrador conseguem entrar.</p>
+      <InstallButton modal={() => alertIOS()} className="btn sm" />
     </div></div>
   );
+}
+
+function alertIOS() {
+  window.alert('No iPhone: abra no Safari, toque em Compartilhar e escolha "Adicionar à Tela de Início".');
 }
 
 function isDark() {
@@ -172,6 +178,7 @@ function Main({ profile, ui, layer }: { profile: AppUser; ui: UI; layer: ReactNo
             <button className="btn ic" onClick={toggleTheme} aria-label="Alternar modo claro/escuro" title="Modo claro/escuro">
               <Icon d={dark ? 'M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5M12 8a4 4 0 100 8 4 4 0 000-8z' : 'M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z'} />
             </button>
+            <InstallButton modal={ui.modal} />
             <button className="btn" onClick={() => signOut(auth)}><span className="uname">{user.name} ·</span> Sair</button>
           </div>
           <Page />
