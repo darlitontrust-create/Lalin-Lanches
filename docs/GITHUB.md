@@ -47,3 +47,14 @@ Com o projeto já no GitHub e o Firebase configurado:
 firebase init hosting:github
 ```
 Responda com o repositório `SEU-USUARIO/lalin-lanches`, comando de build `npm ci && npm run build` e branch `main`. Depois cadastre as variáveis do `.env` em **GitHub › Settings › Secrets and variables › Actions** e inclua-as no arquivo de workflow gerado (`.github/workflows/`), já que o `.env` não vai para o GitHub.
+
+## Publicar pelo GitHub Pages (alternativa ao Firebase Hosting)
+
+O GitHub Pages não executa o código-fonte: o sistema precisa ser montado (`npm run build`). O arquivo `.github/workflows/deploy.yml` faz isso sozinho a cada push.
+
+1. **Settings › Pages › Build and deployment › Source:** troque *Deploy from a branch* por **GitHub Actions**.
+2. **Settings › Secrets and variables › Actions › New repository secret** — crie 6 segredos com os valores do Firebase (os mesmos do `.env`):
+   `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+3. Firebase › **Authentication › Settings › Authorized domains › Add domain:** `SEU-USUARIO.github.io`.
+4. Firebase › **Firestore Database › Rules:** cole o conteúdo de `firestore.rules` e clique em **Publicar**.
+5. Aba **Actions** do repositório: rode o workflow **Publicar no GitHub Pages** (ou faça um push). Em 1–2 minutos o site abre em `https://SEU-USUARIO.github.io/NOME-DO-REPOSITORIO/`.
