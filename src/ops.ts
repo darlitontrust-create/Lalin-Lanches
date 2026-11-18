@@ -1,6 +1,6 @@
 // Regras de negócio que gravam em mais de uma coleção ao mesmo tempo
-import { add, commit, inc, nextSeq, patch, type Op } from './db';
-import type { AppUser, Caixa, Loss, Mode, Move, Order, OrderItem, Product, Status } from './types';
+import { add, commit, fetchCol, getOne, inc, nextSeq, patch, type Op } from './db';
+import type { AppUser, Caixa, Expense, Loss, Mode, Move, Order, OrderItem, Product, Status, Why } from './types';
 import { ds, isSale, moveEffect, newId, orderTotal } from './utils';
 
 export interface DraftItem { key: string; pid: string; qty: number; rem: string[]; obs: string; mode: Mode | '' }
@@ -82,8 +82,17 @@ export function caixaStats(caixa: Caixa, orders: Order[]) {
 /* ---------- Exclusões (somente administrador) ---------- */
 
 /** Apaga o pedido. Se era uma venda válida, devolve os itens ao estoque e apaga as baixas da venda. */
-export async function deleteOrder(o: Order, user: AppUser, products: Product[]) {
-  const ops: Op[] = [{ op: 'delete', path: 'orders', id: o.id }];
+/** Registro no Log de exclusões (vai na mesma gravação da exclusão). */
+export function logOp(kind: string, desc: string, value: number, why: Why, user: AppUser, ref: string, date: string, data?: object): Op {
+  return { op: 'add', path: 'deletions', data: {
+    at: Date.now(), user: user.name, kind, desc, value, reason: why.reason, note: why.note.trim(), ref, date,
+    data: data ? JSON.parse(JSON.stringify(data)) : null
+  } };
+}
+
+export async function deleteOrder(o: Order, user: AppUser, products: Product[], why: Why) {
+  const ops: Op[] = [{ op: 'delete', path: 'orders', id: o.id },
+    logOp('Pedido', `Pedido nº ${o.num} · ${o.client} · ${o.items.map(i => `${i.qty}× ${i.name}`).join(', ')}`, orderTotal(o), why, user, o.id, o.day, o)];
   if (isSale(o)) {
     if (o.moveIds?.length) {
       for (const i of o.items) if (products.some(p => p.id === i.pid)) ops.push({ op: 'update', path: 'products', id: i.pid, data: { stock: inc(i.qty) } });
@@ -94,8 +103,9 @@ export async function deleteOrder(o: Order, user: AppUser, products: Product[]) 
 }
 
 /** Apaga a perda e devolve a quantidade ao estoque. */
-export async function deleteLoss(l: Loss, user: AppUser, products: Product[]) {
-  const ops: Op[] = [{ op: 'delete', path: 'losses', id: l.id }];
+export async function deleteLoss(l: Loss, user: AppUser, products: Product[], why: Why) {
+  const ops: Op[] = [{ op: 'delete', path: 'losses', id: l.id },
+    logOp('Perda', `${l.qty}× ${l.pname} · ${l.motivo}`, l.value, why, user, l.id, l.date, l)];
   if (products.some(p => p.id === l.pid)) ops.push({ op: 'update', path: 'products', id: l.pid, data: { stock: inc(l.qty) } });
   if (l.moveId) ops.push({ op: 'delete', path: 'moves', id: l.moveId });
   else ops.push({ op: 'add', path: 'moves', data: { pid: l.pid, pname: l.pname, t: 'Entrada', motivo: 'Exclusão de perda', qty: l.qty, val: 0, date: ds(), obs: l.motivo, user: user.name, at: Date.now() } });
@@ -103,8 +113,9 @@ export async function deleteLoss(l: Loss, user: AppUser, products: Product[]) {
 }
 
 /** Apaga a movimentação e desfaz o efeito dela no estoque. */
-export async function deleteMove(m: Move, products: Product[]) {
-  const ops: Op[] = [{ op: 'delete', path: 'moves', id: m.id }];
+export async function deleteMove(m: Move, products: Product[], user: AppUser, why: Why) {
+  const ops: Op[] = [{ op: 'delete', path: 'moves', id: m.id },
+    logOp('Movimentação de estoque', `${m.t} · ${m.motivo} · ${Math.abs(m.qty)} ${m.pname}`, Math.abs(m.qty) * (m.val || 0), why, user, m.id, m.date, m)];
   if (products.some(p => p.id === m.pid)) ops.push({ op: 'update', path: 'products', id: m.pid, data: { stock: inc(-moveEffect(m)) } });
   await commit(ops);
 }
@@ -114,8 +125,16 @@ export async function deleteMove(m: Move, products: Product[]) {
 export interface SaleEdit { client: string; phone: string; note: string; mode: Mode; items: OrderItem[]; payM?: string; recv?: number }
 
 /** Edita um pedido já lançado. Se for venda paga, acerta o estoque pela diferença de quantidades e recalcula o pagamento. */
-export async function editSale(o: Order, e: SaleEdit, user: AppUser, products: Product[]) {
+export async function editSale(o: Order, e: SaleEdit, user: AppUser, products: Product[], why?: Why) {
   const ops: Op[] = [];
+  // itens retirados ou com quantidade reduzida vão para o Log de exclusões
+  const sumBy = (items: OrderItem[]) => items.reduce<Record<string, { q: number; i: OrderItem }>>((m, i) => ({ ...m, [i.pid]: { q: (m[i.pid]?.q || 0) + i.qty, i } }), {});
+  const b0 = sumBy(o.items), b1 = sumBy(e.items);
+  for (const [pid, x] of Object.entries(b0)) {
+    const lost = x.q - (b1[pid]?.q || 0);
+    if (lost > 0) ops.push(logOp('Item de pedido', `Pedido nº ${o.num} · ${o.client} · ${lost}× ${x.i.name}`, lost * x.i.price,
+      why || { reason: 'Edição do pedido', note: '' }, user, o.id, o.day, { pedido: o.num, cliente: o.client, item: x.i.name, quantidade: lost, preco: x.i.price }));
+  }
   const moveIds = [...(o.moveIds || [])];
   if (isSale(o)) {
     const qty = (items: OrderItem[]) => items.reduce<Record<string, number>>((m, i) => ({ ...m, [i.pid]: (m[i.pid] || 0) + i.qty }), {});
@@ -155,4 +174,19 @@ export async function editLoss(l: Loss, e: { qty: number; motivo: string; date: 
   if (l.moveId) ops.push({ op: 'update', path: 'moves', id: l.moveId, data: { qty: e.qty, date: e.date, obs: e.motivo } });
   else if (d) ops.push({ op: 'add', path: 'moves', data: { pid: l.pid, pname: l.pname, t: d > 0 ? 'Baixa' : 'Entrada', motivo: 'Edição de perda', qty: Math.abs(d), val: unit, date: ds(), obs: e.motivo, user: user.name, at: Date.now() } });
   await commit(ops);
+}
+
+export async function deleteExpense(x: Expense, user: AppUser, why: Why) {
+  await commit([{ op: 'delete', path: 'expenses', id: x.id },
+    logOp(x.kind === 'despesa' ? 'Despesa' : 'Investimento', `${x.cat}${x.desc ? ' · ' + x.desc : ''}`, x.value, why, user, x.id, x.date, x)]);
+}
+
+/** Recalcula os totais de um caixa já fechado depois de editar/apagar pedidos dele. */
+export async function recalcClosing(cxId?: string) {
+  if (!cxId) return;
+  const c = await getOne<Caixa>('caixas', cxId);
+  if (!c || c.open) return;
+  const orders = await fetchCol<Order>('orders', { where: [['cx', '==', cxId]] });
+  const s = caixaStats(c, orders);
+  await patch('caixas', cxId, { sold: s.sold, byMethod: s.by, orders: s.sales.length, expected: s.cash, diff: (c.counted || 0) - s.cash });
 }

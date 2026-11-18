@@ -50,5 +50,12 @@ export interface Config {
   pix: { key: string; name: string; city: string };
   msgs: Record<string, string>;
   cardFee: number; // % estimada das maquininhas (crédito, débito, vale)
-  off: string[];   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
+  off: string[];
+  delReasons: string[]; // motivos de exclusão   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
+}
+
+export interface Why { reason: string; note: string }
+export interface Deletion {
+  id: string; at: number; user: string; kind: string; desc: string; value: number;
+  reason: string; note: string; ref: string; date: string; data?: Record<string, unknown>;
 }

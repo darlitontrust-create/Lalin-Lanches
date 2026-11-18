@@ -22,7 +22,8 @@ export const DEFAULT_CONFIG: Config = {
     cancelado: 'Olá, {nome}. Seu pedido nº {numero} foi cancelado. Qualquer dúvida, fale com a gente.'
   },
   cardFee: 2.5,
-  off: []
+  off: [],
+  delReasons: ['Lançamento duplicado', 'Lançamento errado', 'Valor ou quantidade errada', 'Lançamento de teste', 'Cliente desistiu', 'Outro']
 };
 
 type Row = [string, string, string, string, string, number, number, number, number, string?, string?];

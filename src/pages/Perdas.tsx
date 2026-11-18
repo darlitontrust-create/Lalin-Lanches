@@ -5,6 +5,7 @@ import type { Loss } from '../types';
 import { brl, dbr, ds, exportXlsx, isOn, newId, nf, nm, num } from '../utils';
 import { deleteLoss, editLoss } from '../ops';
 import { ModalHead } from '../components/ui';
+import { DeleteReasonModal } from '../components/DeleteModal';
 import { Empty, HBars } from '../components/ui';
 
 export default function Perdas() {
@@ -35,10 +36,9 @@ export default function Perdas() {
     } catch (e) { ui.toast('Erro: ' + (e as Error).message); }
     setBusy(false);
   };
-  const del = async (l: Loss) => {
-    if (!(await ui.confirm({ title: 'Apagar esta perda?', text: <>{l.qty}× {l.pname} · {l.motivo} · {brl(l.value)}<br /><span className="mute">A quantidade volta para o estoque.</span></>, ok: 'Apagar' }))) return;
-    try { await deleteLoss(l, user, products); ui.toast('Perda apagada e estoque devolvido'); } catch (e) { ui.toast('Erro: ' + (e as Error).message); }
-  };
+  const del = (l: Loss) => ui.modal(<DeleteReasonModal title="Excluir esta perda?"
+    details={<>{l.qty}× {l.pname} · {l.motivo} · {brl(l.value)}<br /><span className="mute">A quantidade volta para o estoque.</span></>}
+    onConfirm={async why => { await deleteLoss(l, user, products, why); ui.modal(null); ui.toast('Perda excluída e estoque devolvido'); }} />);
   const list = (rows || []).slice().sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
   const group = (f: (l: Loss) => string) => Object.entries(list.reduce<Record<string, number>>((m, l) => ({ ...m, [f(l)]: (m[f(l)] || 0) + l.value }), {})).sort((a, b) => b[1] - a[1]);
   const total = list.reduce((s, l) => s + l.value, 0);
@@ -74,7 +74,7 @@ export default function Perdas() {
     <div className="card mt">
       <div className="row sb"><h2>Lançamentos</h2><button className="btn sm" onClick={exp}>Exportar XLSX</button></div>
       {list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Data</th><th>Produto</th><th className="n">Qtd</th><th>Motivo</th><th>Responsável</th><th className="n">Valor</th>{admin && <th></th>}</tr></thead>
-        <tbody>{list.map(l => <tr key={l.id}><td>{dbr(l.date)}</td><td>{l.pname}</td><td className="n">{nf(l.qty)}</td><td>{l.motivo}</td><td>{l.user}</td><td className="n">{brl(l.value)}</td>{admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<LossEditModal l={l} />)}>Editar</button><button className="btn sm danger" onClick={() => del(l)}>Apagar</button></div></td>}</tr>)}</tbody></table></div>
+        <tbody>{list.map(l => <tr key={l.id}><td>{dbr(l.date)}</td><td>{l.pname}</td><td className="n">{nf(l.qty)}</td><td>{l.motivo}</td><td>{l.user}</td><td className="n">{brl(l.value)}</td>{admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<LossEditModal l={l} />)}>Editar</button><button className="btn sm danger" onClick={() => del(l)}>Excluir</button></div></td>}</tr>)}</tbody></table></div>
         : <Empty>Nenhuma perda neste mês.</Empty>}
     </div>
   </>;

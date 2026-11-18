@@ -4,6 +4,7 @@ import { commit, inc, patch, useCol, type Op } from '../db';
 import type { Inventory, Move, Product } from '../types';
 import { brl, col, dbr, ds, dt, exportXlsx, moveEffect, nf, nm, num, readXlsx } from '../utils';
 import { deleteMove } from '../ops';
+import { DeleteReasonModal } from '../components/DeleteModal';
 import { Empty, StockBadge, Tabs } from '../components/ui';
 
 type Tab = 'pos' | 'mov' | 'inv' | 'hist';
@@ -166,11 +167,12 @@ function Historico() {
   const { user, ui, products } = useApp();
   const admin = user.role === 'admin';
   const moves = useCol<Move>('moves', { order: ['at', 'desc'], max: 300 });
-  const del = async (m: Move) => {
+  const del = (m: Move) => {
     const ef = moveEffect(m);
-    if (!(await ui.confirm({ title: 'Apagar esta movimentação?', text: <>{m.t} · {m.motivo} · {nf(Math.abs(m.qty))} {m.pname}<br />
-      <span className="mute">O estoque de {m.pname} {ef > 0 ? 'diminui' : 'aumenta'} {nf(Math.abs(ef))} para desfazer o lançamento.{m.motivo === 'Venda' ? ' Atenção: esta baixa veio de uma venda; para apagar a venda inteira use Caixa › Vendas do dia.' : ''}</span></>, ok: 'Apagar' }))) return;
-    try { await deleteMove(m, products); ui.toast('Movimentação apagada e estoque corrigido'); } catch (e) { ui.toast('Erro: ' + (e as Error).message); }
+    ui.modal(<DeleteReasonModal title="Excluir esta movimentação?"
+      details={<>{m.t} · {m.motivo} · {nf(Math.abs(m.qty))} {m.pname}<br />
+        <span className="mute">O estoque de {m.pname} {ef > 0 ? 'diminui' : 'aumenta'} {nf(Math.abs(ef))} para desfazer o lançamento.{m.motivo === 'Venda' ? ' Atenção: esta baixa veio de uma venda; para excluir a venda inteira use Caixa › Vendas do dia.' : ''}</span></>}
+      onConfirm={async why => { await deleteMove(m, products, user, why); ui.modal(null); ui.toast('Movimentação excluída e estoque corrigido'); }} />);
   };
   if (!moves) return <p className="mute">Carregando…</p>;
   const exp = () => exportXlsx('movimentacoes-estoque', {
@@ -181,7 +183,7 @@ function Historico() {
     <div className="row end" style={{ marginTop: 0 }}><button className="btn sm" onClick={exp}>Exportar XLSX</button></div>
     {moves.length ? <div className="scroll"><table className="stack"><thead><tr><th>Data</th><th>Operação</th><th>Produto</th><th className="n">Qtd</th><th>Motivo</th><th>Usuário</th><th>Obs.</th>{admin && <th></th>}</tr></thead>
       <tbody>{moves.map(m => <tr key={m.id}><td>{dbr(m.date)}</td><td><span className={'bd ' + (m.t === 'Entrada' ? 'ok' : m.t === 'Ajuste' ? 'y' : 'low')}>{m.t}</span></td>
-        <td>{m.pname}</td><td className="n">{nf(m.qty)}</td><td>{m.motivo}</td><td>{m.user}</td><td>{m.obs}</td>{admin && <td><button className="btn sm danger" onClick={() => del(m)}>Apagar</button></td>}</tr>)}</tbody></table></div>
+        <td>{m.pname}</td><td className="n">{nf(m.qty)}</td><td>{m.motivo}</td><td>{m.user}</td><td>{m.obs}</td>{admin && <td><button className="btn sm danger" onClick={() => del(m)}>Excluir</button></td>}</tr>)}</tbody></table></div>
       : <Empty>Nenhuma movimentação ainda.</Empty>}
   </>;
 }

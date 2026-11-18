@@ -16,8 +16,9 @@ import Despesas from './pages/Despesas';
 import Perdas from './pages/Perdas';
 import Resultados from './pages/Resultados';
 import Usuarios from './pages/Usuarios';
+import Log from './pages/Log';
 
-type View = 'pedidos' | 'caixa' | 'estoque' | 'cadastro' | 'despesas' | 'perdas' | 'resultados' | 'usuarios';
+type View = 'pedidos' | 'caixa' | 'estoque' | 'cadastro' | 'despesas' | 'perdas' | 'resultados' | 'usuarios' | 'log';
 const NAV: [View, string, PermKey | 'admin', string][] = [
   ['pedidos', 'Pedidos', 'pedidos', 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h4'],
   ['caixa', 'Caixa', 'caixa', 'M4 9h16v10H4zM8 9V5h8v4M12 13v2'],
@@ -26,11 +27,12 @@ const NAV: [View, string, PermKey | 'admin', string][] = [
   ['despesas', 'Despesas', 'despesas', 'M4 6h16v12H4zM4 10h16M8 15h3M15 15h1'],
   ['perdas', 'Perdas', 'perdas', 'M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3'],
   ['resultados', 'Resultados', 'resultados', 'M4 20V11M10 20V5M16 20v-6M21 20H3'],
-  ['usuarios', 'Usuários', 'admin', 'M17 20c0-3-2.2-5-5-5s-5 2-5 5M12 12a3.5 3.5 0 100-7 3.5 3.5 0 000 7']
+  ['usuarios', 'Usuários', 'admin', 'M17 20c0-3-2.2-5-5-5s-5 2-5 5M12 12a3.5 3.5 0 100-7 3.5 3.5 0 000 7'],
+  ['log', 'Log de exclusões', 'admin', 'M12 8v4l3 2M4 12a8 8 0 1016 0 8 8 0 00-16 0']
 ];
 const PAGES: Record<View, () => JSX.Element> = {
   pedidos: Pedidos, caixa: CaixaPage, estoque: Estoque, cadastro: Cadastro, despesas: Despesas,
-  perdas: Perdas, resultados: Resultados, usuarios: Usuarios
+  perdas: Perdas, resultados: Resultados, usuarios: Usuarios, log: Log
 };
 
 function useUI() {
@@ -138,9 +140,9 @@ function Main({ profile, ui, layer }: { profile: AppUser; ui: UI; layer: ReactNo
   const [dark, setDark] = useState(isDark);
 
   useEffect(() => {
-    const f = () => { const h = location.hash.slice(1) as View; if (PAGES[h]) setView(h); };
+    const f = () => { const h = location.hash.slice(1) as View; if (PAGES[h]) setView(h); ui.modal(null); };
     addEventListener('hashchange', f); return () => removeEventListener('hashchange', f);
-  }, []);
+  }, [ui]);
   useEffect(() => { if (live === null || (live && !live.active)) signOut(auth); }, [live]);
 
   const can = (k: PermKey | 'admin') => user.role === 'admin' || (k !== 'admin' && !!user.perms?.[k]);

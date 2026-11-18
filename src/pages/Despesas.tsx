@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { add, patch, remove, useCol } from '../db';
+import { add, patch, useCol } from '../db';
+import { deleteExpense } from '../ops';
+import { DeleteReasonModal } from '../components/DeleteModal';
 import type { Expense } from '../types';
 import { brl, dbr, ds, exportXlsx, isOn, num } from '../utils';
 import { Empty, HBars, ModalHead } from '../components/ui';
@@ -24,14 +26,13 @@ export default function Despesas() {
     setBusy(true);
     try {
       await add('expenses', { date, kind, cat, desc: desc.trim(), value: num(value), user: user.name, at: Date.now() });
-      ui.toast(`${kind === 'despesa' ? 'Despesa' : 'Investimento'} lançado: ${cat} ${brl(num(value))}`);
+      ui.toast(`${kind === 'despesa' ? 'Despesa lançada' : 'Investimento lançado'}: ${cat} ${brl(num(value))}`);
       setDesc(''); setValue('');
     } catch (e) { ui.toast('Erro: ' + (e as Error).message); }
     setBusy(false);
   };
-  const del = async (x: Expense) => {
-    if (await ui.confirm({ title: 'Apagar lançamento?', text: `${x.cat} · ${brl(x.value)} · ${dbr(x.date)}`, ok: 'Apagar' })) { await remove('expenses', x.id); ui.toast('Lançamento apagado'); }
-  };
+  const del = (x: Expense) => ui.modal(<DeleteReasonModal title="Excluir lançamento?" details={<>{x.cat}{x.desc ? ' · ' + x.desc : ''} · <b>{brl(x.value)}</b> · {dbr(x.date)}</>}
+    onConfirm={async why => { await deleteExpense(x, user, why); ui.modal(null); ui.toast('Lançamento excluído'); }} />);
   const list = (rows || []).slice().sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
   const sum = (k: string) => list.filter(x => x.kind === k).reduce((s, x) => s + x.value, 0);
   const byCat = (k: string) => Object.entries(list.filter(x => x.kind === k).reduce<Record<string, number>>((m, x) => ({ ...m, [x.cat]: (m[x.cat] || 0) + x.value }), {})).sort((a, b) => b[1] - a[1]);
@@ -68,7 +69,7 @@ export default function Despesas() {
       <div className="row sb"><h2>Lançamentos do mês</h2><button className="btn sm" onClick={exp}>Exportar XLSX</button></div>
       {rows === null ? <p className="mute">Carregando…</p> : list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Data</th><th>Tipo</th><th>Categoria</th><th>Descrição</th><th className="n">Valor</th><th>Por</th><th></th></tr></thead>
         <tbody>{list.map(x => <tr key={x.id}><td>{dbr(x.date)}</td><td><span className={'bd ' + (x.kind === 'despesa' ? 'low' : 'v')}>{x.kind === 'despesa' ? 'Despesa' : 'Investimento'}</span></td>
-          <td>{x.cat}</td><td>{x.desc}</td><td className="n">{brl(x.value)}</td><td>{x.user}</td><td>{admin && <div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<ExpenseEditModal x={x} />)}>Editar</button><button className="btn sm danger" onClick={() => del(x)}>Apagar</button></div>}</td></tr>)}</tbody></table></div>
+          <td>{x.cat}</td><td>{x.desc}</td><td className="n">{brl(x.value)}</td><td>{x.user}</td><td>{admin && <div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<ExpenseEditModal x={x} />)}>Editar</button><button className="btn sm danger" onClick={() => del(x)}>Excluir</button></div>}</td></tr>)}</tbody></table></div>
         : <Empty>Nenhum lançamento neste mês.</Empty>}
     </div>
   </>;

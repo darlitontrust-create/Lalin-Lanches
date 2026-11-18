@@ -62,6 +62,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /deletions/{id} {
+      // Log de exclusões: só o administrador vê e grava; ninguém altera ou apaga
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     match /expenses/{id} {
       allow read: if can('despesas') || can('resultados');
       allow create, update: if can('despesas');

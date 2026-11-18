@@ -155,7 +155,7 @@ function ProductModal({ p }: { p?: Product }) {
 }
 
 /* ---------------- Tabelas auxiliares ---------------- */
-type ListKey = 'types' | 'cats' | 'classes' | 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats';
+type ListKey = 'types' | 'cats' | 'classes' | 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats' | 'delReasons';
 /** Item de cadastro: toque no nome para alterar; o botão ao lado ativa/inativa (nada é apagado). */
 function Item({ list, value, label, code }: { list: ListKey; value: string; label: string; code?: string }) {
   const { cfg, ui } = useApp();
@@ -210,7 +210,7 @@ function CodedList({ k, title, len }: { k: 'types' | 'cats' | 'classes'; title: 
     <div className="chips">{arr.map(x => <Item key={x.c} list={k} value={x.c} label={x.n} code={x.c} />)}</div>
     <div className="row" style={{ marginTop: 12, flexWrap: 'nowrap' }}><input value={v} onChange={e => setV(e.target.value)} placeholder="Novo item" /><button className="btn" onClick={addIt}>Adicionar</button></div></div>;
 }
-function StrList({ k, title, ph }: { k: 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats'; title: string; ph: string }) {
+function StrList({ k, title, ph }: { k: 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats' | 'delReasons'; title: string; ph: string }) {
   const { cfg, ui } = useApp();
   const [v, setV] = useState('');
   const arr = cfg[k];
@@ -226,6 +226,7 @@ function Tabelas() {
     <CodedList k="classes" title="Classes" len={3} />
     <StrList k="units" title="Unidades de medida" ph="Nova unidade" />
     <StrList k="lossReasons" title="Motivos de perda" ph="Novo motivo" />
+    <StrList k="delReasons" title="Motivos de exclusão" ph="Novo motivo" />
   </div></>;
 }
 function Pagamentos() {

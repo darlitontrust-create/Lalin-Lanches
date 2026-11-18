@@ -27,7 +27,7 @@ Sistema web da lanchonete **Lalin Lanches**: pedidos no balcão, fila da cozinha
 - **Cancelamento de pedido pago:** o pagamento fica marcado como estornado e os itens voltam ao estoque.
 - **Estoque zerado** só avisa. Para bloquear a venda, marque o produto como **Indisponível** no Estoque.
 - **Baixa de estoque** acontece quando o pedido é pago.
-- **Editar e apagar registros (só administrador):** pedidos/vendas (Caixa › Vendas do dia), fechamentos de caixa (valor contado), perdas e despesas; movimentações de estoque podem ser apagadas. O estoque é corrigido automaticamente.
+- **Editar e excluir registros (só administrador):** pedidos e itens de pedido, inclusive de caixas já fechados (Caixa › Vendas do dia e Fechamentos › Pedidos), perdas, despesas e movimentações de estoque. Toda exclusão pede um **motivo** (lista em Cadastro › Motivos de exclusão), corrige o estoque, refaz os totais do caixa fechado e fica registrada no menu **Log de exclusões**, que não pode ser alterado.
 - **Cadastros não são apagados:** produtos, tipos, categorias, classes, unidades, formas de pagamento, motivos e categorias de despesa só podem ser **alterados** ou **inativados**. Usuários são bloqueados, não removidos.
 
 ## Rodar no computador
@@ -55,7 +55,7 @@ firebase.json        hosting + firestore
 
 ## Coleções no Firestore
 
-`users` (id = e-mail) · `config/app` · `products` · `orders` · `caixas` · `moves` · `inventories` · `losses` · `expenses`
+`users` (id = e-mail) · `config/app` · `products` · `orders` · `caixas` · `moves` · `inventories` · `losses` · `expenses` · `deletions` (log de exclusões)
 
 ## Próximos passos (roadmap)
 
