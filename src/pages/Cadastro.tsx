@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../store';
-import { add, commit, patch, put, remove, type Op } from '../db';
+import { add, commit, patch, put, type Op } from '../db';
 import { menuOps } from '../seed';
 import type { Coded, Config, Ingredient, Product } from '../types';
-import { STATUS, abbr, brl, col, dfull, ds, exportXlsx, genCode, nm, num, pct, readXlsx } from '../utils';
+import { STATUS, abbr, brl, col, dfull, ds, exportXlsx, genCode, isOn, nm, num, pct, readXlsx } from '../utils';
 import { Empty, ModalHead, Tabs } from '../components/ui';
 
 type Tab = 'prod' | 'tab' | 'pag' | 'desp' | 'msg';
@@ -111,7 +111,7 @@ function ProductModal({ p }: { p?: Product }) {
   const code = isNew ? genCode(products, e.type, e.cat, e.cls) : p!.code;
   const price = num(e.price), cost = num(e.cost);
   const close = () => ui.modal(null);
-  const opts = (a: Coded[]) => a.map(x => <option key={x.c} value={x.c}>{x.n} ({x.c})</option>);
+  const opts = (a: Coded[], list: string, cur: string) => a.filter(x => isOn(cfg, list, x.c) || x.c === cur).map(x => <option key={x.c} value={x.c}>{x.n} ({x.c})</option>);
   const save = async () => {
     if (!e.name.trim()) return ui.toast('Informe o nome do produto');
     setBusy(true);
@@ -122,20 +122,16 @@ function ProductModal({ p }: { p?: Product }) {
       ui.toast(isNew ? 'Produto cadastrado' : 'Produto atualizado'); close();
     } catch (er) { ui.toast('Erro: ' + (er as Error).message); setBusy(false); }
   };
-  const del = async () => {
-    if (!(await ui.confirm({ title: `Excluir ${p!.name}?`, text: 'Prefira inativar: o histórico de vendas continua com o nome do produto.', ok: 'Excluir' }))) return ui.modal(<ProductModal p={p} />);
-    await remove('products', p!.id); ui.toast('Produto excluído');
-  };
   return <>
     <ModalHead title={isNew ? 'Novo produto' : 'Editar produto'} onClose={close} />
     <p>Código <code style={{ fontSize: 15, fontWeight: 700 }}>{code}</code> <span className="mute">· automático: tipo.categoria.classe.sequencial</span></p>
     <div className="fg">
       <label className="w2">Nome<input value={e.name} onChange={x => set('name', x.target.value)} autoFocus /></label>
       <label className="w2">Descrição<input value={e.desc} onChange={x => set('desc', x.target.value)} /></label>
-      <label>Tipo<select value={e.type} disabled={!isNew} onChange={x => set('type', x.target.value)}>{opts(cfg.types)}</select></label>
-      <label>Categoria<select value={e.cat} disabled={!isNew} onChange={x => set('cat', x.target.value)}>{opts(cfg.cats)}</select></label>
-      <label>Classe<select value={e.cls} disabled={!isNew} onChange={x => set('cls', x.target.value)}>{opts(cfg.classes)}</select></label>
-      <label>Unidade<select value={e.unit} onChange={x => set('unit', x.target.value)}>{cfg.units.map(u => <option key={u}>{u}</option>)}</select></label>
+      <label>Tipo<select value={e.type} disabled={!isNew} onChange={x => set('type', x.target.value)}>{opts(cfg.types, 'types', e.type)}</select></label>
+      <label>Categoria<select value={e.cat} disabled={!isNew} onChange={x => set('cat', x.target.value)}>{opts(cfg.cats, 'cats', e.cat)}</select></label>
+      <label>Classe<select value={e.cls} disabled={!isNew} onChange={x => set('cls', x.target.value)}>{opts(cfg.classes, 'classes', e.cls)}</select></label>
+      <label>Unidade<select value={e.unit} onChange={x => set('unit', x.target.value)}>{cfg.units.filter(u => isOn(cfg, 'units', u) || u === e.unit).map(u => <option key={u}>{u}</option>)}</select></label>
       <label>Estoque mínimo<input type="number" inputMode="decimal" value={e.min} onChange={x => set('min', x.target.value)} /></label>
       <label>Estoque atual<input type="number" inputMode="decimal" value={e.stock} disabled={!isNew} title={isNew ? '' : 'Altere pelo módulo Estoque'} onChange={x => set('stock', x.target.value)} /></label>
       <label>Custo unitário<input type="number" step="0.01" inputMode="decimal" value={e.cost} onChange={x => set('cost', x.target.value)} /></label>
@@ -153,29 +149,65 @@ function ProductModal({ p }: { p?: Product }) {
         <button className="btn" onClick={() => { if (ni.trim()) { setIngr([...ingr, { n: ni.trim(), r: true }]); setNi(''); } }}>Adicionar</button></div>
     </>}
     {!isNew && <><h3>Histórico de preços</h3>{(p!.prices || []).slice().reverse().map((x, i) => <p key={i} style={{ margin: '2px 0' }}>{brl(x.v)} <span className="mute">vigente desde {dfull(x.from)}</span></p>)}</>}
-    <div className="row end">{!isNew && <button className="btn danger" onClick={del} style={{ marginRight: 'auto' }}>Excluir</button>}
+    <div className="row end">
       <button className="btn" onClick={close}>Cancelar</button><button className="btn p" disabled={busy} onClick={save}>Salvar produto</button></div>
   </>;
 }
 
 /* ---------------- Tabelas auxiliares ---------------- */
+type ListKey = 'types' | 'cats' | 'classes' | 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats';
+/** Item de cadastro: toque no nome para alterar; o botão ao lado ativa/inativa (nada é apagado). */
+function Item({ list, value, label, code }: { list: ListKey; value: string; label: string; code?: string }) {
+  const { cfg, ui } = useApp();
+  const on = isOn(cfg, list, value);
+  const toggle = async () => {
+    const off = cfg.off || [];
+    const key = `${list}:${value}`;
+    await saveCfg({ off: on ? [...off, key] : off.filter(k => k !== key) });
+    ui.toast(`${label} ${on ? 'inativado' : 'reativado'}`);
+  };
+  return <span className={'chip'} style={{ opacity: on ? 1 : 0.55 }}>
+    <button className="btn sm" style={{ minHeight: 26, padding: '0 4px', border: 0, background: 'none' }} title="Alterar nome" onClick={() => ui.modal(<RenameModal list={list} value={value} label={label} code={code} />)}>
+      {on ? label : <s>{label}</s>}{code && <span className="mute">&nbsp;{code}</span>}</button>
+    <button className="btn sm" style={{ minHeight: 26, padding: '0 8px', fontSize: 12 }} onClick={toggle}>{on ? 'Inativar' : 'Reativar'}</button>
+  </span>;
+}
+function RenameModal({ list, value, label, code }: { list: ListKey; value: string; label: string; code?: string }) {
+  const { cfg, ui } = useApp();
+  const [v, setV] = useState(label);
+  const close = () => ui.modal(null);
+  const save = async () => {
+    const n = v.trim(); if (!n || n === label) return close();
+    if (code) {
+      const arr = (cfg[list] as Coded[]).map(x => (x.c === code ? { ...x, n } : x));
+      await saveCfg({ [list]: arr });
+    } else {
+      const arr = cfg[list] as string[];
+      if (arr.includes(n)) return ui.toast('Já existe um item com esse nome');
+      await saveCfg({ [list]: arr.map(x => (x === value ? n : x)), off: (cfg.off || []).map(k => (k === `${list}:${value}` ? `${list}:${n}` : k)) });
+    }
+    ui.toast('Alterado para ' + n); close();
+  };
+  return <>
+    <ModalHead title={'Alterar ' + label} onClose={close} />
+    {code && <p className="mute">O código <b>{code}</b> continua o mesmo (ele faz parte dos códigos dos produtos).</p>}
+    {!code && <p className="mute">Lançamentos antigos continuam com o nome anterior.</p>}
+    <label>Nome<input value={v} onChange={e => setV(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') save(); }} /></label>
+    <div className="row end"><button className="btn" onClick={close}>Cancelar</button><button className="btn p" onClick={save}>Salvar</button></div>
+  </>;
+}
 function CodedList({ k, title, len }: { k: 'types' | 'cats' | 'classes'; title: string; len: number }) {
-  const { cfg, products, ui } = useApp();
+  const { cfg, ui } = useApp();
   const [v, setV] = useState('');
   const arr = cfg[k];
-  const field = k === 'types' ? 'type' : k === 'cats' ? 'cat' : 'cls';
   const addIt = async () => {
     const n = v.trim(); if (!n) return;
     let c = abbr(n, len) || 'X'; const base = c; let i = 1;
     while (arr.some(x => x.c === c)) c = base.slice(0, len - 1) + i++;
     await saveCfg({ [k]: [...arr, { c, n }] }); setV(''); ui.toast(`Adicionado: ${n} (${c})`);
   };
-  const del = async (x: Coded) => {
-    if (products.some(p => (p as unknown as Record<string, string>)[field] === x.c)) return ui.toast(`${x.n} está em uso por produtos`);
-    await saveCfg({ [k]: arr.filter(y => y.c !== x.c) });
-  };
   return <div className="card"><h2>{title}</h2>
-    <div className="chips">{arr.map(x => <span key={x.c} className="chip">{x.n} <span className="mute">{x.c}</span><button className="btn sm" style={{ minHeight: 26, padding: '0 6px' }} aria-label={'Remover ' + x.n} onClick={() => del(x)}>×</button></span>)}</div>
+    <div className="chips">{arr.map(x => <Item key={x.c} list={k} value={x.c} label={x.n} code={x.c} />)}</div>
     <div className="row" style={{ marginTop: 12, flexWrap: 'nowrap' }}><input value={v} onChange={e => setV(e.target.value)} placeholder="Novo item" /><button className="btn" onClick={addIt}>Adicionar</button></div></div>;
 }
 function StrList({ k, title, ph }: { k: 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats'; title: string; ph: string }) {
@@ -184,17 +216,17 @@ function StrList({ k, title, ph }: { k: 'units' | 'pays' | 'lossReasons' | 'expe
   const arr = cfg[k];
   const addIt = async () => { const n = v.trim(); if (!n || arr.includes(n)) return; await saveCfg({ [k]: [...arr, n] }); setV(''); ui.toast('Adicionado: ' + n); };
   return <div className="card"><h2>{title}</h2>
-    <div className="chips">{arr.map(x => <span key={x} className="chip">{x}<button className="btn sm" style={{ minHeight: 26, padding: '0 6px' }} aria-label={'Remover ' + x} onClick={() => saveCfg({ [k]: arr.filter(y => y !== x) })}>×</button></span>)}</div>
+    <div className="chips">{arr.map(x => <Item key={x} list={k} value={x} label={x} />)}</div>
     <div className="row" style={{ marginTop: 12, flexWrap: 'nowrap' }}><input value={v} onChange={e => setV(e.target.value)} placeholder={ph} /><button className="btn" onClick={addIt}>Adicionar</button></div></div>;
 }
 function Tabelas() {
-  return <div className="g2">
+  return <><p className="mute" style={{ marginTop: 0 }}>Toque no nome para alterar. Itens inativos somem das listas de escolha, mas o histórico continua.</p><div className="g2">
     <CodedList k="types" title="Tipos de produto" len={2} />
     <CodedList k="cats" title="Categorias" len={3} />
     <CodedList k="classes" title="Classes" len={3} />
     <StrList k="units" title="Unidades de medida" ph="Nova unidade" />
     <StrList k="lossReasons" title="Motivos de perda" ph="Novo motivo" />
-  </div>;
+  </div></>;
 }
 function Pagamentos() {
   const { cfg, ui } = useApp();

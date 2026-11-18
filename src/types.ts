@@ -29,7 +29,7 @@ export interface Order {
   client: string; phone: string; note: string; mode: Mode;
   items: OrderItem[]; status: Status; paid: boolean; pay?: Payment;
   cancel?: { at: number; by: string; reason: string };
-  by: string; updatedAt?: number;
+  by: string; updatedAt?: number; moveIds?: string[];
 }
 export interface Caixa {
   id: string; at: number; initial: number; by: string; open: boolean; seq: number;
@@ -40,7 +40,7 @@ export interface Move {
   id: string; pid: string; pname: string; t: 'Entrada' | 'Baixa' | 'Ajuste'; motivo: string;
   qty: number; val: number; date: string; obs: string; user: string; at: number;
 }
-export interface Loss { id: string; pid: string; pname: string; cat: string; qty: number; motivo: string; date: string; user: string; value: number; at: number }
+export interface Loss { id: string; pid: string; pname: string; cat: string; qty: number; motivo: string; date: string; user: string; value: number; at: number; moveId?: string }
 export interface Expense { id: string; date: string; kind: 'despesa' | 'investimento'; cat: string; desc: string; value: number; user: string; at: number }
 export interface Inventory { id: string; at: number; user: string; n: number; val: number; items: { pid: string; pname: string; before: number; after: number }[] }
 
@@ -50,4 +50,5 @@ export interface Config {
   pix: { key: string; name: string; city: string };
   msgs: Record<string, string>;
   cardFee: number; // % estimada das maquininhas (crédito, débito, vale)
+  off: string[];   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
 }

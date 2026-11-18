@@ -32,6 +32,12 @@ export const isSale = (o: Order) => o.paid && o.status !== 'cancelado' && !o.pay
 export const isOpenOrder = (o: Order) => o.status !== 'cancelado' && !(o.status === 'entregue' && o.paid);
 
 export const sellable = (p: Product) => p.type === 'RV' && p.active && p.price > 0;
+/** Item de cadastro auxiliar ativo? (formas de pagamento, unidades, categorias…) */
+export const isOn = (cfg: Config, list: string, v: string) => !(cfg.off || []).includes(`${list}:${v}`);
+export const newId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+/** Quanto uma movimentação mexeu no estoque (+ entrou, − saiu). */
+export const moveEffect = (m: { t: string; motivo: string; qty: number }) =>
+  m.t === 'Entrada' ? m.qty : m.t === 'Baixa' ? -m.qty : m.motivo === 'Inventário' ? m.qty : -m.qty;
 export const nm = (arr: { c: string; n: string }[], c: string) => (arr.find(x => x.c === c) || { n: c }).n;
 
 export function genCode(products: Product[], t: string, c: string, k: string) {

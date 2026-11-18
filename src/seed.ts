@@ -21,7 +21,8 @@ export const DEFAULT_CONFIG: Config = {
     entregue: 'Obrigado, {nome}! Seu pedido nº {numero} foi entregue. Bom apetite!',
     cancelado: 'Olá, {nome}. Seu pedido nº {numero} foi cancelado. Qualquer dúvida, fale com a gente.'
   },
-  cardFee: 2.5
+  cardFee: 2.5,
+  off: []
 };
 
 type Row = [string, string, string, string, string, number, number, number, number, string?, string?];

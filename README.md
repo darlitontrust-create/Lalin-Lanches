@@ -27,6 +27,8 @@ Sistema web da lanchonete **Lalin Lanches**: pedidos no balcão, fila da cozinha
 - **Cancelamento de pedido pago:** o pagamento fica marcado como estornado e os itens voltam ao estoque.
 - **Estoque zerado** só avisa. Para bloquear a venda, marque o produto como **Indisponível** no Estoque.
 - **Baixa de estoque** acontece quando o pedido é pago.
+- **Apagar registros (só administrador):** pedidos/vendas (Caixa › Vendas do dia), movimentações de estoque, perdas e despesas. Ao apagar, o estoque é corrigido automaticamente.
+- **Cadastros não são apagados:** produtos, tipos, categorias, classes, unidades, formas de pagamento, motivos e categorias de despesa só podem ser **alterados** ou **inativados**. Usuários são bloqueados, não removidos.
 
 ## Rodar no computador
 

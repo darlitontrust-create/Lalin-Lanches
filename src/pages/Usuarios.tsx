@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { patch, put, remove, useCol } from '../db';
+import { patch, put, useCol } from '../db';
 import { SUPER_ADMIN } from '../firebase';
 import type { AppUser, PermKey, Role } from '../types';
 
@@ -24,15 +24,9 @@ export default function Usuarios() {
     setName(''); setEmail('');
   };
   const isSuper = (u: AppUser) => u.id === SUPER_ADMIN;
-  const del = async (u: AppUser) => {
-    if (await ui.confirm({ title: `Remover o acesso de ${u.name}?`, text: 'A pessoa não conseguirá mais entrar. O histórico continua.', ok: 'Remover' })) {
-      await remove('users', u.id); ui.toast('Acesso removido');
-    }
-  };
-
   return <div className="card">
-    <p className="mute" style={{ marginTop: 0 }}>Só entra no sistema quem estiver nesta lista. A pessoa usa o botão "Entrar com Google" com o mesmo e-mail cadastrado aqui.</p>
-    {!users ? <p className="mute">Carregando…</p> : <div className="scroll"><table className="stack"><thead><tr><th>Usuário</th><th>Perfil</th>{PERMS.map(p => <th key={p[0]}>{p[1]}</th>)}<th>Acesso</th><th></th></tr></thead>
+    <p className="mute" style={{ marginTop: 0 }}>Só entra no sistema quem estiver nesta lista. A pessoa usa o botão "Entrar com Google" com o mesmo e-mail cadastrado aqui. Para tirar o acesso, use Bloqueado.</p>
+    {!users ? <p className="mute">Carregando…</p> : <div className="scroll"><table className="stack"><thead><tr><th>Usuário</th><th>Perfil</th>{PERMS.map(p => <th key={p[0]}>{p[1]}</th>)}<th>Acesso</th></tr></thead>
       <tbody>{users.map(u => <tr key={u.id}>
         <td><b>{u.name}</b><br /><span className="mute">{u.email}</span></td>
         <td><select value={u.role} disabled={isSuper(u) || u.id === user.id} style={{ minHeight: 38 }} onChange={e => patch('users', u.id, { role: e.target.value })}>
@@ -40,7 +34,6 @@ export default function Usuarios() {
         {PERMS.map(([k, l]) => <td key={k}><label className="ck"><input type="checkbox" aria-label={l} checked={u.role === 'admin' || !!u.perms?.[k]} disabled={u.role === 'admin'}
           onChange={e => patch('users', u.id, { ['perms.' + k]: e.target.checked })} /></label></td>)}
         <td><button className={'chip' + (u.active ? ' on' : '')} style={{ minHeight: 32 }} disabled={isSuper(u) || u.id === user.id} onClick={() => patch('users', u.id, { active: !u.active })}>{u.active ? 'Liberado' : 'Bloqueado'}</button></td>
-        <td>{!isSuper(u) && u.id !== user.id && <button className="btn sm danger" onClick={() => del(u)}>Remover</button>}</td>
       </tr>)}</tbody></table></div>}
     <h3>Liberar novo acesso (conta Google)</h3>
     <div className="fg" style={{ maxWidth: 760 }}>

@@ -1,7 +1,7 @@
 // Regras de negócio que gravam em mais de uma coleção ao mesmo tempo
 import { add, commit, inc, nextSeq, patch, type Op } from './db';
-import type { AppUser, Caixa, Mode, Order, OrderItem, Product, Status } from './types';
-import { ds, isSale, orderTotal } from './utils';
+import type { AppUser, Caixa, Loss, Mode, Move, Order, OrderItem, Product, Status } from './types';
+import { ds, isSale, moveEffect, newId, orderTotal } from './utils';
 
 export interface DraftItem { key: string; pid: string; qty: number; rem: string[]; obs: string; mode: Mode | '' }
 export interface Draft { editing?: string; num?: number; client: string; phone: string; note: string; mode: Mode; items: DraftItem[] }
@@ -35,12 +35,13 @@ export async function updateOrder(id: string, d: Draft, products: Product[]) {
 
 export const setStatus = (o: Order, s: Status) => patch('orders', o.id, { status: s, updatedAt: Date.now() });
 
-function stockOps(o: Order, sign: 1 | -1, motivo: string, user: AppUser, products: Product[]): Op[] {
+function stockOps(o: Order, sign: 1 | -1, motivo: string, user: AppUser, products: Product[], ids?: string[]): Op[] {
   const ops: Op[] = [];
   for (const i of o.items) {
     if (!products.some(p => p.id === i.pid)) continue;
+    const id = newId(); ids?.push(id);
     ops.push({ op: 'update', path: 'products', id: i.pid, data: { stock: inc(sign * i.qty) } });
-    ops.push({ op: 'add', path: 'moves', data: {
+    ops.push({ op: 'set', path: 'moves', id, data: {
       pid: i.pid, pname: i.name, t: sign > 0 ? 'Entrada' : 'Baixa', motivo, qty: i.qty, val: sign > 0 ? i.cost : i.price,
       date: ds(), obs: `Pedido nº ${o.num}`, user: user.name, at: Date.now()
     } });
@@ -51,7 +52,9 @@ function stockOps(o: Order, sign: 1 | -1, motivo: string, user: AppUser, product
 export async function payOrder(o: Order, m: string, recv: number, user: AppUser, products: Product[]) {
   const t = orderTotal(o);
   const pay = { m, recv: m === 'Dinheiro' ? recv : t, change: m === 'Dinheiro' ? Math.max(0, recv - t) : 0, at: Date.now(), by: user.name };
-  await commit([{ op: 'update', path: 'orders', id: o.id, data: { paid: true, pay, updatedAt: Date.now() } }, ...stockOps(o, -1, 'Venda', user, products)]);
+  const moveIds: string[] = [];
+  const st = stockOps(o, -1, 'Venda', user, products, moveIds);
+  await commit([{ op: 'update', path: 'orders', id: o.id, data: { paid: true, pay, moveIds, updatedAt: Date.now() } }, ...st]);
   return pay;
 }
 
@@ -74,4 +77,34 @@ export function caixaStats(caixa: Caixa, orders: Order[]) {
     recv += o.pay!.recv; change += o.pay!.change;
   }
   return { sales, by, sold, recv, change, cash: caixa.initial + (by['Dinheiro'] || 0) };
+}
+
+/* ---------- Exclusões (somente administrador) ---------- */
+
+/** Apaga o pedido. Se era uma venda válida, devolve os itens ao estoque e apaga as baixas da venda. */
+export async function deleteOrder(o: Order, user: AppUser, products: Product[]) {
+  const ops: Op[] = [{ op: 'delete', path: 'orders', id: o.id }];
+  if (isSale(o)) {
+    if (o.moveIds?.length) {
+      for (const i of o.items) if (products.some(p => p.id === i.pid)) ops.push({ op: 'update', path: 'products', id: i.pid, data: { stock: inc(i.qty) } });
+      for (const id of o.moveIds) ops.push({ op: 'delete', path: 'moves', id });
+    } else ops.push(...stockOps(o, 1, 'Exclusão de venda', user, products));
+  }
+  await commit(ops);
+}
+
+/** Apaga a perda e devolve a quantidade ao estoque. */
+export async function deleteLoss(l: Loss, user: AppUser, products: Product[]) {
+  const ops: Op[] = [{ op: 'delete', path: 'losses', id: l.id }];
+  if (products.some(p => p.id === l.pid)) ops.push({ op: 'update', path: 'products', id: l.pid, data: { stock: inc(l.qty) } });
+  if (l.moveId) ops.push({ op: 'delete', path: 'moves', id: l.moveId });
+  else ops.push({ op: 'add', path: 'moves', data: { pid: l.pid, pname: l.pname, t: 'Entrada', motivo: 'Exclusão de perda', qty: l.qty, val: 0, date: ds(), obs: l.motivo, user: user.name, at: Date.now() } });
+  await commit(ops);
+}
+
+/** Apaga a movimentação e desfaz o efeito dela no estoque. */
+export async function deleteMove(m: Move, products: Product[]) {
+  const ops: Op[] = [{ op: 'delete', path: 'moves', id: m.id }];
+  if (products.some(p => p.id === m.pid)) ops.push({ op: 'update', path: 'products', id: m.pid, data: { stock: inc(-moveEffect(m)) } });
+  await commit(ops);
 }

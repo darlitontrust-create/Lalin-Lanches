@@ -2,20 +2,22 @@ import { useState } from 'react';
 import { useApp } from '../store';
 import { add, remove, useCol } from '../db';
 import type { Expense } from '../types';
-import { brl, dbr, ds, exportXlsx, num } from '../utils';
+import { brl, dbr, ds, exportXlsx, isOn, num } from '../utils';
 import { Empty, HBars } from '../components/ui';
 
 export default function Despesas() {
   const { cfg, user, ui } = useApp();
+  const admin = user.role === 'admin';
+  const expCats = cfg.expenseCats.filter(x => isOn(cfg, 'expenseCats', x)), invCats = cfg.investCats.filter(x => isOn(cfg, 'investCats', x));
   const [month, setMonth] = useState(ds().slice(0, 7));
   const [kind, setKind] = useState<'despesa' | 'investimento'>('despesa');
-  const [cat, setCat] = useState(cfg.expenseCats[0] || '');
+  const [cat, setCat] = useState(expCats[0] || '');
   const [desc, setDesc] = useState('');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(ds());
   const [busy, setBusy] = useState(false);
   const rows = useCol<Expense>('expenses', { where: [['date', '>=', month + '-01'], ['date', '<=', month + '-31']] });
-  const cats = kind === 'despesa' ? cfg.expenseCats : cfg.investCats;
+  const cats = kind === 'despesa' ? expCats : invCats;
 
   const save = async () => {
     if (!(num(value) > 0) || !cat) return ui.toast('Informe a categoria e o valor');
@@ -28,7 +30,7 @@ export default function Despesas() {
     setBusy(false);
   };
   const del = async (x: Expense) => {
-    if (await ui.confirm({ title: 'Excluir lançamento?', text: `${x.cat} · ${brl(x.value)} · ${dbr(x.date)}`, ok: 'Excluir' })) { await remove('expenses', x.id); ui.toast('Lançamento excluído'); }
+    if (await ui.confirm({ title: 'Apagar lançamento?', text: `${x.cat} · ${brl(x.value)} · ${dbr(x.date)}`, ok: 'Excluir' })) { await remove('expenses', x.id); ui.toast('Lançamento excluído'); }
   };
   const list = (rows || []).slice().sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
   const sum = (k: string) => list.filter(x => x.kind === k).reduce((s, x) => s + x.value, 0);
@@ -42,8 +44,8 @@ export default function Despesas() {
     <div className="g3">
       <div className="card"><h2>Lançar</h2>
         <div className="chips" style={{ marginBottom: 10 }}>
-          <button className={'chip' + (kind === 'despesa' ? ' on' : '')} onClick={() => { setKind('despesa'); setCat(cfg.expenseCats[0] || ''); }}>Despesa operacional</button>
-          <button className={'chip' + (kind === 'investimento' ? ' on' : '')} onClick={() => { setKind('investimento'); setCat(cfg.investCats[0] || ''); }}>Investimento</button>
+          <button className={'chip' + (kind === 'despesa' ? ' on' : '')} onClick={() => { setKind('despesa'); setCat(expCats[0] || ''); }}>Despesa operacional</button>
+          <button className={'chip' + (kind === 'investimento' ? ' on' : '')} onClick={() => { setKind('investimento'); setCat(invCats[0] || ''); }}>Investimento</button>
         </div>
         <div className="fg">
           <label>Categoria<select value={cat} onChange={e => setCat(e.target.value)}>{cats.map(c => <option key={c}>{c}</option>)}</select></label>
@@ -66,7 +68,7 @@ export default function Despesas() {
       <div className="row sb"><h2>Lançamentos do mês</h2><button className="btn sm" onClick={exp}>Exportar XLSX</button></div>
       {rows === null ? <p className="mute">Carregando…</p> : list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Data</th><th>Tipo</th><th>Categoria</th><th>Descrição</th><th className="n">Valor</th><th>Por</th><th></th></tr></thead>
         <tbody>{list.map(x => <tr key={x.id}><td>{dbr(x.date)}</td><td><span className={'bd ' + (x.kind === 'despesa' ? 'low' : 'v')}>{x.kind === 'despesa' ? 'Despesa' : 'Investimento'}</span></td>
-          <td>{x.cat}</td><td>{x.desc}</td><td className="n">{brl(x.value)}</td><td>{x.user}</td><td><button className="btn sm danger" onClick={() => del(x)}>Excluir</button></td></tr>)}</tbody></table></div>
+          <td>{x.cat}</td><td>{x.desc}</td><td className="n">{brl(x.value)}</td><td>{x.user}</td><td>{admin && <button className="btn sm danger" onClick={() => del(x)}>Apagar</button>}</td></tr>)}</tbody></table></div>
         : <Empty>Nenhum lançamento neste mês.</Empty>}
     </div>
   </>;

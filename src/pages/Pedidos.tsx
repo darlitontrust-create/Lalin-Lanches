@@ -5,7 +5,7 @@ import { useApp } from '../store';
 import { useCol } from '../db';
 import { createOrder, payOrder, setStatus, updateOrder, type Draft, type DraftItem } from '../ops';
 import type { Mode, Order, Product, Status } from '../types';
-import { ML, STATUS, brl, fillMsg, hm, isOpenOrder, num, orderTotal, pixPayload, sellable, waLink } from '../utils';
+import { ML, STATUS, brl, fillMsg, hm, isOn, isOpenOrder, num, orderTotal, pixPayload, sellable, waLink } from '../utils';
 import { Empty, ModalHead } from '../components/ui';
 import { CaixaOpen, CancelModal, CloseCaixaModal } from './shared';
 
@@ -294,7 +294,7 @@ function Cobranca({ orders, sel, setSel }: { orders: Order[]; sel: string | null
         <ul style={{ paddingLeft: 18 }}>{o.items.map((i, k) => <li key={k}>{i.qty}× {i.name} — {brl(i.qty * i.price)}</li>)}</ul>
         <div className="row sb"><span className="mute">Valor total</span><span className="big">{brl(t)}</span></div>
         <h3>Forma de pagamento</h3>
-        <div className="chips">{cfg.pays.map(x => <button key={x} className={'chip' + (x === m ? ' on' : '')} onClick={() => setM(x)}>{x}</button>)}</div>
+        <div className="chips">{cfg.pays.filter(x => isOn(cfg, 'pays', x)).map(x => <button key={x} className={'chip' + (x === m ? ' on' : '')} onClick={() => setM(x)}>{x}</button>)}</div>
         <div style={{ marginTop: 14 }}>
           {m === 'Dinheiro' ? <>
             <label>Valor recebido<input type="number" inputMode="decimal" step="0.01" value={recv} onChange={e => setRecv(e.target.value)} placeholder="0,00" /></label>

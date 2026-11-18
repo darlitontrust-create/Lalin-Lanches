@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '../store';
 import { useCol } from '../db';
-import { caixaStats } from '../ops';
+import { caixaStats, deleteOrder } from '../ops';
 import type { Caixa, Order } from '../types';
-import { brl, dt, exportXlsx } from '../utils';
+import { ML, STATUS, brl, ds, dt, exportXlsx, hm, isSale, orderTotal } from '../utils';
 import { Empty, HBars } from '../components/ui';
 import { CaixaOpen, CloseCaixaModal } from './shared';
 
@@ -39,6 +39,7 @@ export default function CaixaPage() {
           </div></div>
       </div>
     </>}
+    <VendasDoDia />
     <div className="card mt">
       <div className="row sb"><h2>Fechamentos anteriores</h2><div className="row noprint"><button className="btn sm" onClick={exportHist}>Exportar XLSX</button><button className="btn sm" onClick={() => window.print()}>Imprimir / PDF</button></div></div>
       {closed.length ? <div className="scroll"><table className="stack"><thead><tr><th>Abertura</th><th>Fechamento</th><th>Responsável</th><th className="n">Vendas</th><th className="n">Vendido</th><th className="n">Esperado em dinheiro</th><th className="n">Contado</th><th className="n">Diferença</th></tr></thead>
@@ -49,4 +50,42 @@ export default function CaixaPage() {
         : <Empty>Nenhum fechamento registrado ainda.</Empty>}
     </div>
   </>;
+}
+
+/** Lista de pedidos de um dia, com exclusão (somente administrador). */
+function VendasDoDia() {
+  const { user, ui, products } = useApp();
+  const admin = user.role === 'admin';
+  const [day, setDay] = useState(ds());
+  const rows = useCol<Order>('orders', { where: [['day', '==', day]] });
+  const list = (rows || []).slice().sort((a, b) => b.at - a.at);
+  const sold = list.filter(isSale).reduce((s, o) => s + orderTotal(o), 0);
+  const del = async (o: Order) => {
+    const ok = await ui.confirm({
+      title: `Apagar o pedido nº ${o.num} de ${o.client}?`, ok: 'Apagar definitivamente',
+      text: <>
+        <p style={{ margin: '0 0 8px' }}>{o.items.map(i => `${i.qty}× ${i.name}`).join(', ')} · <b>{brl(orderTotal(o))}</b></p>
+        <p className="mute" style={{ margin: 0 }}>O pedido some da fila, das vendas e dos resultados.{isSale(o) ? ' Os itens voltam ao estoque.' : ''} Esta ação não pode ser desfeita.
+          {o.status !== 'cancelado' && ' Se o cliente só desistiu, prefira cancelar o pedido na fila: assim fica o registro.'}
+          {' '}Fechamentos de caixa já feitos mantêm os valores que foram registrados.</p>
+      </>
+    });
+    if (!ok) return;
+    try { await deleteOrder(o, user, products); ui.toast(`Pedido nº ${o.num} apagado`); } catch (e) { ui.toast('Erro: ' + (e as Error).message); }
+  };
+  const exp = () => exportXlsx('pedidos-' + day, {
+    Pedidos: [['Nº', 'Hora', 'Cliente', 'Itens', 'Consumo', 'Status', 'Pago', 'Forma', 'Total', 'Lançado por'],
+      ...list.map(o => [o.num, hm(o.at), o.client, o.items.map(i => `${i.qty}x ${i.name}`).join(', '), ML[o.mode], STATUS[o.status].n, o.paid ? (o.pay?.refunded ? 'Estornado' : 'Sim') : 'Não', o.pay?.m || '', orderTotal(o), o.by])]
+  });
+  return <div className="card mt">
+    <div className="row sb"><h2 style={{ margin: 0 }}>Vendas do dia</h2>
+      <div className="row noprint"><input type="date" value={day} max={ds()} onChange={e => setDay(e.target.value || ds())} style={{ width: 'auto' }} aria-label="Dia" />
+        <button className="btn sm" onClick={exp}>Exportar XLSX</button></div></div>
+    <p className="mute">{list.length} pedido(s) · vendido {brl(sold)}{admin ? ' · o administrador pode apagar lançamentos feitos por engano' : ''}</p>
+    {rows === null ? <p className="mute">Carregando…</p> : list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Nº</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Status</th><th>Pagamento</th><th className="n">Total</th><th>Por</th>{admin && <th></th>}</tr></thead>
+      <tbody>{list.map(o => <tr key={o.id}><td>{o.num}</td><td>{hm(o.at)}</td><td>{o.client}</td><td>{o.items.map(i => `${i.qty}× ${i.name}`).join(', ')}</td>
+        <td>{STATUS[o.status].n}</td><td>{o.paid ? (o.pay?.refunded ? 'Estornado' : o.pay?.m) : 'Não pago'}</td><td className="n">{brl(orderTotal(o))}</td><td>{o.by}</td>
+        {admin && <td><button className="btn sm danger" onClick={() => del(o)}>Apagar</button></td>}</tr>)}</tbody></table></div>
+      : <Empty>Nenhum pedido neste dia.</Empty>}
+  </div>;
 }

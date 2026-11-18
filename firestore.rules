@@ -27,7 +27,8 @@ service cloud.firestore {
 
     match /products/{id} {
       allow read: if isUser();
-      allow create, delete: if can('cadastro');
+      allow create: if can('cadastro');
+      allow delete: if false; // cadastro só altera ou inativa
       // estoque é atualizado por vendas, perdas, entradas e inventário
       allow update: if can('cadastro') || can('estoque') || can('pedidos') || can('perdas');
     }
@@ -63,7 +64,8 @@ service cloud.firestore {
 
     match /expenses/{id} {
       allow read: if can('despesas') || can('resultados');
-      allow create, update, delete: if can('despesas');
+      allow create, update: if can('despesas');
+      allow delete: if isAdmin();
     }
   }
 }
