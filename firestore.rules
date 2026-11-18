@@ -1,0 +1,69 @@
+rules_version = '2';
+
+// Regras de segurança do Lalin Lanches
+// - Só entra quem tem documento em /users/{email} com active == true
+// - O administrador principal abaixo pode criar o próprio cadastro no primeiro acesso
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function isSuper() { return signedIn() && myEmail() == 'darlitontrust@gmail.com'; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(myEmail())); }
+    function profile() { return get(/databases/$(database)/documents/users/$(myEmail())).data; }
+    function isUser() { return isSuper() || (hasProfile() && profile().active == true); }
+    function isAdmin() { return isSuper() || (isUser() && profile().role == 'admin'); }
+    function can(p) { return isAdmin() || (isUser() && profile().perms.get(p, false) == true); }
+
+    match /users/{id} {
+      allow read: if isAdmin() || (signedIn() && id == myEmail());
+      allow write: if isAdmin();
+    }
+
+    match /config/{id} {
+      allow read: if isUser();
+      allow write: if isAdmin() || can('cadastro');
+    }
+
+    match /products/{id} {
+      allow read: if isUser();
+      allow create, delete: if can('cadastro');
+      // estoque é atualizado por vendas, perdas, entradas e inventário
+      allow update: if can('cadastro') || can('estoque') || can('pedidos') || can('perdas');
+    }
+
+    match /orders/{id} {
+      allow read: if can('pedidos') || can('caixa') || can('resultados');
+      allow create, update: if can('pedidos');
+      allow delete: if isAdmin();
+    }
+
+    match /caixas/{id} {
+      allow read: if can('pedidos') || can('caixa') || can('resultados');
+      allow create, update: if can('pedidos') || can('caixa');
+      allow delete: if isAdmin();
+    }
+
+    match /moves/{id} {
+      allow read: if can('estoque') || can('resultados');
+      allow create: if isUser();
+      allow update, delete: if isAdmin();
+    }
+
+    match /inventories/{id} {
+      allow read, create: if can('estoque');
+      allow update, delete: if isAdmin();
+    }
+
+    match /losses/{id} {
+      allow read: if can('perdas') || can('resultados');
+      allow create: if can('perdas');
+      allow update, delete: if isAdmin();
+    }
+
+    match /expenses/{id} {
+      allow read: if can('despesas') || can('resultados');
+      allow create, update, delete: if can('despesas');
+    }
+  }
+}
