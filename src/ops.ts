@@ -108,3 +108,51 @@ export async function deleteMove(m: Move, products: Product[]) {
   if (products.some(p => p.id === m.pid)) ops.push({ op: 'update', path: 'products', id: m.pid, data: { stock: inc(-moveEffect(m)) } });
   await commit(ops);
 }
+
+/* ---------- Edições (somente administrador) ---------- */
+
+export interface SaleEdit { client: string; phone: string; note: string; mode: Mode; items: OrderItem[]; payM?: string; recv?: number }
+
+/** Edita um pedido já lançado. Se for venda paga, acerta o estoque pela diferença de quantidades e recalcula o pagamento. */
+export async function editSale(o: Order, e: SaleEdit, user: AppUser, products: Product[]) {
+  const ops: Op[] = [];
+  const moveIds = [...(o.moveIds || [])];
+  if (isSale(o)) {
+    const qty = (items: OrderItem[]) => items.reduce<Record<string, number>>((m, i) => ({ ...m, [i.pid]: (m[i.pid] || 0) + i.qty }), {});
+    const before = qty(o.items), after = qty(e.items);
+    for (const pid of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      const d = (after[pid] || 0) - (before[pid] || 0);
+      const p = products.find(x => x.id === pid);
+      if (!d || !p) continue;
+      const id = newId(); moveIds.push(id);
+      ops.push({ op: 'update', path: 'products', id: pid, data: { stock: inc(-d) } });
+      ops.push({ op: 'set', path: 'moves', id, data: {
+        pid, pname: p.name, t: d > 0 ? 'Baixa' : 'Entrada', motivo: d > 0 ? 'Venda' : 'Edição de venda', qty: Math.abs(d),
+        val: d > 0 ? p.price : p.cost, date: ds(), obs: `Edição do pedido nº ${o.num}`, user: user.name, at: Date.now()
+      } });
+    }
+  }
+  const data: Record<string, unknown> = {
+    client: e.client.trim(), phone: e.phone.trim(), note: e.note.trim(), mode: e.mode, items: e.items,
+    moveIds, updatedAt: Date.now(), editedBy: user.name
+  };
+  if (o.paid && o.pay) {
+    const t = e.items.reduce((s, i) => s + i.qty * i.price, 0);
+    const m = e.payM || o.pay.m;
+    const recv = m === 'Dinheiro' ? Math.max(e.recv ?? o.pay.recv, t) : t;
+    data.pay = { ...o.pay, m, recv, change: m === 'Dinheiro' ? recv - t : 0 };
+  }
+  ops.unshift({ op: 'update', path: 'orders', id: o.id, data });
+  await commit(ops);
+}
+
+/** Edita uma perda e acerta o estoque pela diferença. */
+export async function editLoss(l: Loss, e: { qty: number; motivo: string; date: string }, user: AppUser, products: Product[]) {
+  const unit = l.qty ? l.value / l.qty : products.find(p => p.id === l.pid)?.cost || 0;
+  const d = e.qty - l.qty;
+  const ops: Op[] = [{ op: 'update', path: 'losses', id: l.id, data: { qty: e.qty, motivo: e.motivo, date: e.date, value: e.qty * unit, editedBy: user.name } }];
+  if (d && products.some(p => p.id === l.pid)) ops.push({ op: 'update', path: 'products', id: l.pid, data: { stock: inc(-d) } });
+  if (l.moveId) ops.push({ op: 'update', path: 'moves', id: l.moveId, data: { qty: e.qty, date: e.date, obs: e.motivo } });
+  else if (d) ops.push({ op: 'add', path: 'moves', data: { pid: l.pid, pname: l.pname, t: d > 0 ? 'Baixa' : 'Entrada', motivo: 'Edição de perda', qty: Math.abs(d), val: unit, date: ds(), obs: e.motivo, user: user.name, at: Date.now() } });
+  await commit(ops);
+}

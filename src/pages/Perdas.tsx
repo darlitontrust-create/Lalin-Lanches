@@ -3,7 +3,8 @@ import { useApp } from '../store';
 import { commit, inc, useCol } from '../db';
 import type { Loss } from '../types';
 import { brl, dbr, ds, exportXlsx, isOn, newId, nf, nm, num } from '../utils';
-import { deleteLoss } from '../ops';
+import { deleteLoss, editLoss } from '../ops';
+import { ModalHead } from '../components/ui';
 import { Empty, HBars } from '../components/ui';
 
 export default function Perdas() {
@@ -73,8 +74,37 @@ export default function Perdas() {
     <div className="card mt">
       <div className="row sb"><h2>Lançamentos</h2><button className="btn sm" onClick={exp}>Exportar XLSX</button></div>
       {list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Data</th><th>Produto</th><th className="n">Qtd</th><th>Motivo</th><th>Responsável</th><th className="n">Valor</th>{admin && <th></th>}</tr></thead>
-        <tbody>{list.map(l => <tr key={l.id}><td>{dbr(l.date)}</td><td>{l.pname}</td><td className="n">{nf(l.qty)}</td><td>{l.motivo}</td><td>{l.user}</td><td className="n">{brl(l.value)}</td>{admin && <td><button className="btn sm danger" onClick={() => del(l)}>Apagar</button></td>}</tr>)}</tbody></table></div>
+        <tbody>{list.map(l => <tr key={l.id}><td>{dbr(l.date)}</td><td>{l.pname}</td><td className="n">{nf(l.qty)}</td><td>{l.motivo}</td><td>{l.user}</td><td className="n">{brl(l.value)}</td>{admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<LossEditModal l={l} />)}>Editar</button><button className="btn sm danger" onClick={() => del(l)}>Apagar</button></div></td>}</tr>)}</tbody></table></div>
         : <Empty>Nenhuma perda neste mês.</Empty>}
     </div>
+  </>;
+}
+
+function LossEditModal({ l }: { l: Loss }) {
+  const { cfg, ui, user, products } = useApp();
+  const [qty, setQty] = useState(String(l.qty));
+  const [mot, setMot] = useState(l.motivo);
+  const [date, setDate] = useState(l.date);
+  const [busy, setBusy] = useState(false);
+  const close = () => ui.modal(null);
+  const unit = l.qty ? l.value / l.qty : 0;
+  const reasons = cfg.lossReasons.filter(x => isOn(cfg, 'lossReasons', x) || x === l.motivo);
+  const save = async () => {
+    const q = num(qty);
+    if (!(q > 0)) return ui.toast('Informe a quantidade');
+    setBusy(true);
+    try { await editLoss(l, { qty: q, motivo: mot, date }, user, products); ui.toast('Perda atualizada' + (q !== l.qty ? ' · estoque acertado' : '')); close(); }
+    catch (e) { ui.toast('Erro: ' + (e as Error).message); setBusy(false); }
+  };
+  return <>
+    <ModalHead title={'Editar perda · ' + l.pname} onClose={close} />
+    <div className="fg">
+      <label>Quantidade<input type="number" inputMode="decimal" step="0.01" value={qty} onChange={e => setQty(e.target.value)} /></label>
+      <label>Motivo<select value={mot} onChange={e => setMot(e.target.value)}>{reasons.map(x => <option key={x}>{x}</option>)}</select></label>
+      <label>Data<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
+      <label>Valor<input readOnly value={brl(num(qty) * unit)} /></label>
+    </div>
+    <p className="mute">Se a quantidade mudar, o estoque é acertado pela diferença.</p>
+    <div className="row end"><button className="btn" onClick={close}>Cancelar</button><button className="btn p" disabled={busy} onClick={save}>Salvar</button></div>
   </>;
 }
