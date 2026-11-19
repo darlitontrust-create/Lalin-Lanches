@@ -6,6 +6,7 @@ import { AppCtx, type Ctx, type UI } from './store';
 import type { AppUser, Caixa, Config, PermKey, Product } from './types';
 import { DEFAULT_CONFIG, seedAll } from './seed';
 import { hm } from './utils';
+import { splashDone, splashProgress } from './splash';
 import { Icon, Logo, ModalHead, Wordmark } from './components/ui';
 import { InstallButton } from './components/Install';
 import Pedidos from './pages/Pedidos';
@@ -92,12 +93,14 @@ export default function App() {
     }
   }), []);
 
-  if (fb === undefined || (fb && !profile && !err)) return <div className="center"><p className="mute">Carregando…</p></div>;
+  if (fb === undefined) return null; // a tela de abertura continua visível
+  if (fb && !profile && !err) { splashProgress(55); return <div className="center"><p className="mute">Verificando acesso…</p></div>; }
   if (!fb || !profile) return <Login err={err} />;
   return <Main profile={profile} ui={ui} layer={layer} />;
 }
 
 function Login({ err }: { err: string }) {
+  useEffect(splashDone, []);
   const [busy, setBusy] = useState(false);
   const [e2, setE2] = useState('');
   const go = async () => {
@@ -156,7 +159,8 @@ function Main({ profile, ui, layer }: { profile: AppUser; ui: UI; layer: ReactNo
     setDark(m === 'dark');
   };
 
-  if (cfgDoc === undefined || products === null || open === null) return <div className="center"><p className="mute">Carregando dados…</p></div>;
+  if (cfgDoc === undefined || products === null || open === null) { splashProgress(80); return <div className="center"><p className="mute">Carregando dados…</p></div>; }
+  splashDone();
   if (cfgDoc === null) return <Setup admin={user.role === 'admin'} ui={ui} />;
   if (!cur) return <div className="center"><div className="card lgc"><h2>Sem módulos liberados</h2><p className="mute">Peça ao administrador para liberar suas permissões.</p><button className="btn" onClick={() => signOut(auth)}>Sair</button></div></div>;
 
@@ -192,6 +196,7 @@ function Main({ profile, ui, layer }: { profile: AppUser; ui: UI; layer: ReactNo
 }
 
 function Setup({ admin, ui }: { admin: boolean; ui: UI }) {
+  useEffect(splashDone, []);
   const [busy, setBusy] = useState(false);
   const run = async (menu: boolean) => {
     setBusy(true);
