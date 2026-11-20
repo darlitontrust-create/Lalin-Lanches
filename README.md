@@ -26,7 +26,9 @@ Sistema web da lanchonete **Lalin Lanches**: pedidos no balcão, fila da cozinha
 - **Caixa e fila:** a numeração dos pedidos recomeça no nº 1 a cada abertura de caixa. O caixa **só fecha** quando todos os pedidos estão pagos e entregues, ou cancelados.
 - **Cancelamento de pedido pago:** o pagamento fica marcado como estornado e os itens voltam ao estoque.
 - **Estoque zerado** só avisa. Para bloquear a venda, marque o produto como **Indisponível** no Estoque.
-- **Baixa de estoque** acontece quando o pedido é pago.
+- **Baixa de estoque** acontece quando o pedido é pago. Produtos de revenda podem ter **composição** (ex.: 1 Pão com pernil baixa 1 Pão de sal + 1 porção de Pernil): venda, perda, cancelamento, edição e exclusão movimentam o produto e a matéria-prima vinculada. O vínculo pode ser feito no produto de revenda (Composição) ou na matéria-prima (Vincular a produtos de revenda).
+- **WhatsApp:** em Cadastro › Mensagens WhatsApp dá para fazer a conversa abrir sozinha, com a mensagem pronta, quando o status do pedido muda.
+- **Senha do administrador** (Usuários): exigida para limpar o Log de exclusões. A senha inicial é 1991 — troque no primeiro acesso.
 - **Editar e excluir registros (só administrador):** pedidos e itens de pedido, inclusive de caixas já fechados (Caixa › Vendas do dia e Fechamentos › Pedidos), perdas, despesas e movimentações de estoque. Toda exclusão pede um **motivo** (lista em Cadastro › Motivos de exclusão), corrige o estoque, refaz os totais do caixa fechado e fica registrada no menu **Log de exclusões**, que não pode ser alterado.
 - **Cadastros não são apagados:** produtos, tipos, categorias, classes, unidades, formas de pagamento, motivos e categorias de despesa só podem ser **alterados** ou **inativados**. Usuários são bloqueados, não removidos.
 
@@ -55,7 +57,7 @@ firebase.json        hosting + firestore
 
 ## Coleções no Firestore
 
-`users` (id = e-mail) · `config/app` · `products` · `orders` · `caixas` · `moves` · `inventories` · `losses` · `expenses` · `deletions` (log de exclusões)
+`users` (id = e-mail) · `config/app` · `products` · `orders` · `caixas` · `moves` · `inventories` · `losses` · `expenses` · `deletions` (log de exclusões) · `secure` (senha do administrador)
 
 ## Próximos passos (roadmap)
 

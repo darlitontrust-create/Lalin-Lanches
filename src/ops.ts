@@ -1,6 +1,6 @@
 // Regras de negócio que gravam em mais de uma coleção ao mesmo tempo
 import { add, commit, fetchCol, getOne, inc, nextSeq, patch, type Op } from './db';
-import type { AppUser, Caixa, Expense, Loss, Mode, Move, Order, OrderItem, Product, Status, Why } from './types';
+import type { AppUser, Caixa, Expense, Loss, Mode, Move, Order, OrderItem, Product, Status, StockLine, Why } from './types';
 import { ds, isSale, moveEffect, newId, orderTotal } from './utils';
 
 export interface DraftItem { key: string; pid: string; qty: number; rem: string[]; obs: string; mode: Mode | '' }
@@ -35,15 +35,32 @@ export async function updateOrder(id: string, d: Draft, products: Product[]) {
 
 export const setStatus = (o: Order, s: Status) => patch('orders', o.id, { status: s, updatedAt: Date.now() });
 
-function stockOps(o: Order, sign: 1 | -1, motivo: string, user: AppUser, products: Product[], ids?: string[]): Op[] {
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/** O que sai do estoque: o próprio produto + a composição (matéria-prima vinculada) × quantidade. */
+export function expand(lines: { pid: string; qty: number }[], products: Product[]): StockLine[] {
+  const m: Record<string, number> = {};
+  for (const l of lines) {
+    const p = products.find(x => x.id === l.pid); if (!p) continue;
+    m[p.id] = (m[p.id] || 0) + l.qty;
+    for (const c of p.comp || []) if (products.some(x => x.id === c.pid)) m[c.pid] = (m[c.pid] || 0) + l.qty * c.qty;
+  }
+  return Object.entries(m).map(([pid, qty]) => ({ pid, qty: r3(qty) })).filter(x => x.qty);
+}
+/** O que efetivamente saiu do estoque na venda (pedidos antigos: só os itens). */
+const outOf = (o: Order): StockLine[] => o.stockOut || Object.entries(o.items.reduce<Record<string, number>>((m, i) => ({ ...m, [i.pid]: (m[i.pid] || 0) + i.qty }), {})).map(([pid, qty]) => ({ pid, qty }));
+const sumLines = (l: StockLine[]) => l.reduce<Record<string, number>>((m, x) => ({ ...m, [x.pid]: (m[x.pid] || 0) + x.qty }), {});
+
+/** Movimenta o estoque (+ entra / − sai) e registra uma movimentação por produto. */
+function lineOps(lines: StockLine[], sign: 1 | -1, motivo: string, obs: string, user: AppUser, products: Product[], ids?: string[], date = ds()): Op[] {
   const ops: Op[] = [];
-  for (const i of o.items) {
-    if (!products.some(p => p.id === i.pid)) continue;
+  for (const l of lines) {
+    const p = products.find(x => x.id === l.pid); if (!p || !l.qty) continue;
     const id = newId(); ids?.push(id);
-    ops.push({ op: 'update', path: 'products', id: i.pid, data: { stock: inc(sign * i.qty) } });
+    ops.push({ op: 'update', path: 'products', id: p.id, data: { stock: inc(sign * l.qty) } });
     ops.push({ op: 'set', path: 'moves', id, data: {
-      pid: i.pid, pname: i.name, t: sign > 0 ? 'Entrada' : 'Baixa', motivo, qty: i.qty, val: sign > 0 ? i.cost : i.price,
-      date: ds(), obs: `Pedido nº ${o.num}`, user: user.name, at: Date.now()
+      pid: p.id, pname: p.name, t: sign > 0 ? 'Entrada' : 'Baixa', motivo, qty: l.qty, val: p.type === 'RV' && motivo === 'Venda' ? p.price : p.cost,
+      date, obs, user: user.name, at: Date.now()
     } });
   }
   return ops;
@@ -53,8 +70,9 @@ export async function payOrder(o: Order, m: string, recv: number, user: AppUser,
   const t = orderTotal(o);
   const pay = { m, recv: m === 'Dinheiro' ? recv : t, change: m === 'Dinheiro' ? Math.max(0, recv - t) : 0, at: Date.now(), by: user.name };
   const moveIds: string[] = [];
-  const st = stockOps(o, -1, 'Venda', user, products, moveIds);
-  await commit([{ op: 'update', path: 'orders', id: o.id, data: { paid: true, pay, moveIds, updatedAt: Date.now() } }, ...st]);
+  const stockOut = expand(o.items, products);
+  const st = lineOps(stockOut, -1, 'Venda', `Pedido nº ${o.num}`, user, products, moveIds);
+  await commit([{ op: 'update', path: 'orders', id: o.id, data: { paid: true, pay, moveIds, stockOut, updatedAt: Date.now() } }, ...st]);
   return pay;
 }
 
@@ -64,7 +82,7 @@ export async function cancelOrder(o: Order, reason: string, user: AppUser, produ
     status: 'cancelado', cancel: { at: Date.now(), by: user.name, reason: reason.trim() }, updatedAt: Date.now(),
     ...(o.paid && o.pay ? { pay: { ...o.pay, refunded: true } } : {})
   } }];
-  if (isSale(o)) ops.push(...stockOps(o, 1, 'Estorno', user, products));
+  if (isSale(o)) ops.push(...lineOps(outOf(o), 1, 'Estorno', `Pedido nº ${o.num} cancelado`, user, products));
   await commit(ops);
 }
 
@@ -95,20 +113,33 @@ export async function deleteOrder(o: Order, user: AppUser, products: Product[], 
     logOp('Pedido', `Pedido nº ${o.num} · ${o.client} · ${o.items.map(i => `${i.qty}× ${i.name}`).join(', ')}`, orderTotal(o), why, user, o.id, o.day, o)];
   if (isSale(o)) {
     if (o.moveIds?.length) {
-      for (const i of o.items) if (products.some(p => p.id === i.pid)) ops.push({ op: 'update', path: 'products', id: i.pid, data: { stock: inc(i.qty) } });
+      for (const l of outOf(o)) if (products.some(p => p.id === l.pid)) ops.push({ op: 'update', path: 'products', id: l.pid, data: { stock: inc(l.qty) } });
       for (const id of o.moveIds) ops.push({ op: 'delete', path: 'moves', id });
-    } else ops.push(...stockOps(o, 1, 'Exclusão de venda', user, products));
+    } else ops.push(...lineOps(outOf(o), 1, 'Exclusão de venda', `Pedido nº ${o.num}`, user, products));
   }
   await commit(ops);
 }
 
-/** Apaga a perda e devolve a quantidade ao estoque. */
+/** Lança uma perda: baixa o produto e, se for produto de revenda com composição, a matéria-prima vinculada. */
+export async function createLoss(p: Product, qty: number, motivo: string, date: string, cat: string, user: AppUser, products: Product[]) {
+  const moveIds: string[] = [];
+  const stockOut = expand([{ pid: p.id, qty }], products);
+  const ops = lineOps(stockOut, -1, 'Perda', motivo, user, products, moveIds, date);
+  ops.unshift({ op: 'add', path: 'losses', data: { pid: p.id, pname: p.name, cat, qty, motivo, date, user: user.name, value: qty * p.cost, at: Date.now(), moveIds, stockOut } });
+  await commit(ops);
+}
+const lossOut = (l: Loss): StockLine[] => l.stockOut || [{ pid: l.pid, qty: l.qty }];
+const lossMoves = (l: Loss) => l.moveIds || (l.moveId ? [l.moveId] : []);
+
+/** Apaga a perda e devolve tudo o que ela tinha baixado. */
 export async function deleteLoss(l: Loss, user: AppUser, products: Product[], why: Why) {
   const ops: Op[] = [{ op: 'delete', path: 'losses', id: l.id },
     logOp('Perda', `${l.qty}× ${l.pname} · ${l.motivo}`, l.value, why, user, l.id, l.date, l)];
-  if (products.some(p => p.id === l.pid)) ops.push({ op: 'update', path: 'products', id: l.pid, data: { stock: inc(l.qty) } });
-  if (l.moveId) ops.push({ op: 'delete', path: 'moves', id: l.moveId });
-  else ops.push({ op: 'add', path: 'moves', data: { pid: l.pid, pname: l.pname, t: 'Entrada', motivo: 'Exclusão de perda', qty: l.qty, val: 0, date: ds(), obs: l.motivo, user: user.name, at: Date.now() } });
+  const mv = lossMoves(l);
+  if (mv.length) {
+    for (const x of lossOut(l)) if (products.some(p => p.id === x.pid)) ops.push({ op: 'update', path: 'products', id: x.pid, data: { stock: inc(x.qty) } });
+    for (const id of mv) ops.push({ op: 'delete', path: 'moves', id });
+  } else ops.push(...lineOps(lossOut(l), 1, 'Exclusão de perda', l.motivo, user, products));
   await commit(ops);
 }
 
@@ -136,24 +167,18 @@ export async function editSale(o: Order, e: SaleEdit, user: AppUser, products: P
       why || { reason: 'Edição do pedido', note: '' }, user, o.id, o.day, { pedido: o.num, cliente: o.client, item: x.i.name, quantidade: lost, preco: x.i.price }));
   }
   const moveIds = [...(o.moveIds || [])];
+  let stockOut: StockLine[] | undefined;
   if (isSale(o)) {
-    const qty = (items: OrderItem[]) => items.reduce<Record<string, number>>((m, i) => ({ ...m, [i.pid]: (m[i.pid] || 0) + i.qty }), {});
-    const before = qty(o.items), after = qty(e.items);
+    const before = sumLines(outOf(o)); stockOut = expand(e.items, products); const after = sumLines(stockOut);
     for (const pid of new Set([...Object.keys(before), ...Object.keys(after)])) {
-      const d = (after[pid] || 0) - (before[pid] || 0);
-      const p = products.find(x => x.id === pid);
-      if (!d || !p) continue;
-      const id = newId(); moveIds.push(id);
-      ops.push({ op: 'update', path: 'products', id: pid, data: { stock: inc(-d) } });
-      ops.push({ op: 'set', path: 'moves', id, data: {
-        pid, pname: p.name, t: d > 0 ? 'Baixa' : 'Entrada', motivo: d > 0 ? 'Venda' : 'Edição de venda', qty: Math.abs(d),
-        val: d > 0 ? p.price : p.cost, date: ds(), obs: `Edição do pedido nº ${o.num}`, user: user.name, at: Date.now()
-      } });
+      const d = r3((after[pid] || 0) - (before[pid] || 0));
+      if (!d) continue;
+      ops.push(...lineOps([{ pid, qty: Math.abs(d) }], d > 0 ? -1 : 1, d > 0 ? 'Venda' : 'Edição de venda', `Edição do pedido nº ${o.num}`, user, products, moveIds));
     }
   }
   const data: Record<string, unknown> = {
     client: e.client.trim(), phone: e.phone.trim(), note: e.note.trim(), mode: e.mode, items: e.items,
-    moveIds, updatedAt: Date.now(), editedBy: user.name
+    moveIds, updatedAt: Date.now(), editedBy: user.name, ...(stockOut ? { stockOut } : {})
   };
   if (o.paid && o.pay) {
     const t = e.items.reduce((s, i) => s + i.qty * i.price, 0);
@@ -165,14 +190,34 @@ export async function editSale(o: Order, e: SaleEdit, user: AppUser, products: P
   await commit(ops);
 }
 
-/** Edita uma perda e acerta o estoque pela diferença. */
+/** Edita uma perda e acerta o estoque (produto + composição) pela diferença. */
 export async function editLoss(l: Loss, e: { qty: number; motivo: string; date: string }, user: AppUser, products: Product[]) {
   const unit = l.qty ? l.value / l.qty : products.find(p => p.id === l.pid)?.cost || 0;
-  const d = e.qty - l.qty;
-  const ops: Op[] = [{ op: 'update', path: 'losses', id: l.id, data: { qty: e.qty, motivo: e.motivo, date: e.date, value: e.qty * unit, editedBy: user.name } }];
-  if (d && products.some(p => p.id === l.pid)) ops.push({ op: 'update', path: 'products', id: l.pid, data: { stock: inc(-d) } });
-  if (l.moveId) ops.push({ op: 'update', path: 'moves', id: l.moveId, data: { qty: e.qty, date: e.date, obs: e.motivo } });
-  else if (d) ops.push({ op: 'add', path: 'moves', data: { pid: l.pid, pname: l.pname, t: d > 0 ? 'Baixa' : 'Entrada', motivo: 'Edição de perda', qty: Math.abs(d), val: unit, date: ds(), obs: e.motivo, user: user.name, at: Date.now() } });
+  const before = sumLines(lossOut(l));
+  const stockOut = expand([{ pid: l.pid, qty: e.qty }], products);
+  const after = sumLines(stockOut);
+  const ops: Op[] = [];
+  const old = lossMoves(l);
+  const moveIds: string[] = [];
+  if (old.length) {
+    // refaz as movimentações da perda com os dados novos
+    for (const id of old) ops.push({ op: 'delete', path: 'moves', id });
+    for (const x of stockOut) {
+      const p = products.find(y => y.id === x.pid); if (!p) continue;
+      const id = newId(); moveIds.push(id);
+      ops.push({ op: 'set', path: 'moves', id, data: { pid: p.id, pname: p.name, t: 'Baixa', motivo: 'Perda', qty: x.qty, val: p.cost, date: e.date, obs: e.motivo, user: user.name, at: Date.now() } });
+    }
+    for (const pid of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      const d = r3((after[pid] || 0) - (before[pid] || 0));
+      if (d && products.some(p => p.id === pid)) ops.push({ op: 'update', path: 'products', id: pid, data: { stock: inc(-d) } });
+    }
+  } else {
+    for (const pid of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      const d = r3((after[pid] || 0) - (before[pid] || 0));
+      if (d) ops.push(...lineOps([{ pid, qty: Math.abs(d) }], d > 0 ? -1 : 1, 'Edição de perda', e.motivo, user, products, moveIds));
+    }
+  }
+  ops.unshift({ op: 'update', path: 'losses', id: l.id, data: { qty: e.qty, motivo: e.motivo, date: e.date, value: e.qty * unit, editedBy: user.name, stockOut, moveIds: old.length ? moveIds : [...(l.moveIds || []), ...moveIds] } });
   await commit(ops);
 }
 

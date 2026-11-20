@@ -1,11 +1,14 @@
 // Log de exclusões: tudo que foi excluído, por quem, quando e por quê
 import { Fragment, useState } from 'react';
-import { useCol } from '../db';
+import { add, commit, fetchCol, useCol, type Op } from '../db';
+import { useApp } from '../store';
+import { checkPin } from '../security';
 import type { Deletion } from '../types';
 import { brl, ds, dt, exportXlsx } from '../utils';
-import { Empty, HBars } from '../components/ui';
+import { Empty, HBars, ModalHead } from '../components/ui';
 
 export default function Log() {
+  const { ui } = useApp();
   const [month, setMonth] = useState(ds().slice(0, 7));
   const [kind, setKind] = useState('');
   const [open, setOpen] = useState<string | null>(null);
@@ -26,9 +29,10 @@ export default function Log() {
         <div className="chips"><button className={'chip' + (!kind ? ' on' : '')} onClick={() => setKind('')}>Todos ({all.length})</button>
           {kinds.map(k => <button key={k} className={'chip' + (kind === k ? ' on' : '')} onClick={() => setKind(k)}>{k} ({all.filter(x => x.kind === k).length})</button>)}</div>
         <div className="row"><input type="month" value={month} onChange={e => setMonth(e.target.value || ds().slice(0, 7))} style={{ width: 'auto' }} aria-label="Mês" />
-          <button className="btn sm" onClick={exp}>Exportar XLSX</button></div>
+          <button className="btn sm" onClick={exp}>Exportar XLSX</button>
+          <button className="btn sm danger" onClick={() => ui.modal(<ClearLogModal month={month} />)}>Limpar log</button></div>
       </div>
-      <p className="mute">Registro permanente: nada aqui pode ser alterado ou apagado. Valor total excluído no filtro: <b>{brl(list.reduce((s, d) => s + (d.value || 0), 0))}</b></p>
+      <p className="mute">Ninguém altera estes registros; só o administrador pode limpar o log, com senha. Valor total excluído no filtro: <b>{brl(list.reduce((s, d) => s + (d.value || 0), 0))}</b></p>
       {rows === null ? <p className="mute">Carregando…</p> : list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Quando</th><th>Tipo</th><th>O que foi excluído</th><th className="n">Valor</th><th>Motivo</th><th>Por</th><th></th></tr></thead>
         <tbody>{list.map(d => <Fragment key={d.id}>
           <tr><td>{dt(d.at)}</td><td><span className="bd low">{d.kind}</span></td><td>{d.desc}</td><td className="n">{brl(d.value || 0)}</td>
@@ -59,4 +63,39 @@ function Details({ data }: { data: Record<string, unknown> }) {
     {items && <div><span className="mute">Itens:</span> {items.map(i => `${i.qty}× ${i.name} (${brl(i.price)})${i.rem?.length ? ' sem ' + i.rem.join(', ').toLowerCase() : ''}`).join(' · ')}</div>}
     {pay?.m && <div><span className="mute">Pagamento:</span> {pay.m}{pay.m === 'Dinheiro' ? ` · recebido ${brl(pay.recv || 0)} · troco ${brl(pay.change || 0)}` : ''}</div>}
   </div>;
+}
+
+/** Limpeza do log: só administrador, com senha. A limpeza em si fica registrada. */
+function ClearLogModal({ month }: { month: string }) {
+  const { ui, user } = useApp();
+  const [scope, setScope] = useState<'mes' | 'tudo'>('mes');
+  const [pin, setPinV] = useState('');
+  const [busy, setBusy] = useState(false);
+  const close = () => ui.modal(null);
+  const label = scope === 'mes' ? `de ${month.slice(5, 7)}/${month.slice(0, 4)}` : 'de todos os meses';
+  const go = async () => {
+    if (!pin) return ui.toast('Digite a senha do administrador');
+    setBusy(true);
+    try {
+      if (!(await checkPin(pin))) { ui.toast('Senha incorreta'); setBusy(false); return; }
+      const from = new Date(month + '-01T00:00').getTime();
+      const to = new Date(new Date(from).getFullYear(), new Date(from).getMonth() + 1, 1).getTime();
+      const rows = await fetchCol<Deletion>('deletions', scope === 'mes' ? { where: [['at', '>=', from], ['at', '<', to]] } : {});
+      const ops: Op[] = rows.map(r => ({ op: 'delete', path: 'deletions', id: r.id }));
+      await commit(ops);
+      await add('deletions', { at: Date.now(), user: user.name, kind: 'Limpeza do log', desc: `${rows.length} registro(s) ${label} apagado(s)`, value: 0,
+        reason: 'Limpeza do log', note: '', ref: '', date: ds(), data: null });
+      ui.toast(`Log limpo: ${rows.length} registro(s) apagado(s)`); close();
+    } catch (e) { ui.toast('Erro: ' + (e as Error).message); setBusy(false); }
+  };
+  return <>
+    <ModalHead title="Limpar Log de exclusões" onClose={close} />
+    <div className="chips" style={{ marginBottom: 12 }}>
+      <button className={'chip' + (scope === 'mes' ? ' on' : '')} onClick={() => setScope('mes')}>Só o mês {month.slice(5, 7)}/{month.slice(0, 4)}</button>
+      <button className={'chip' + (scope === 'tudo' ? ' on' : '')} onClick={() => setScope('tudo')}>Todo o log</button>
+    </div>
+    <p className="note">Os registros {label} serão apagados definitivamente. Fica apenas uma linha informando quem limpou e quando. Exporte o XLSX antes, se quiser guardar.</p>
+    <label>Senha do administrador<input type="password" value={pin} onChange={e => setPinV(e.target.value)} autoFocus autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') go(); }} /></label>
+    <div className="row end"><button className="btn" onClick={close}>Cancelar</button><button className="btn p" disabled={busy} onClick={go}>Limpar log</button></div>
+  </>;
 }

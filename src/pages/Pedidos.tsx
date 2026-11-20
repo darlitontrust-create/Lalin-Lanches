@@ -122,11 +122,16 @@ function NovoPedido({ draft: d, setDraft, onSaved, onCancelEdit }: { draft: Draf
     const off = d.items.map(i => P(i.pid)).filter(p => !p || p.unavailable);
     if (off.length) return ui.toast('Há itens indisponíveis no pedido: ' + off.map(p => p?.name || 'removido').join(', '));
     setBusy(true);
+    // WhatsApp automático do pedido recebido: a janela abre já no clique (o navegador bloqueia se abrir depois)
+    const w = !d.editing && d.phone.trim() && cfg.wa?.auto && cfg.wa.on.includes('aguardando') ? window.open('', '_blank') : null;
     try {
       if (d.editing) { await updateOrder(d.editing, d, products); ui.toast(`Pedido nº ${d.num} atualizado na fila`); }
-      else { const n = await createOrder(d, caixa!, products, user); ui.toast(`Pedido nº ${n} enviado para a cozinha`); }
+      else {
+        const n = await createOrder(d, caixa!, products, user); ui.toast(`Pedido nº ${n} enviado para a cozinha`);
+        if (w) w.location.href = waLink(d.phone, fillMsg(cfg.msgs.aguardando, { client: d.client.trim(), num: n, status: 'aguardando' }));
+      }
       onSaved();
-    } catch (e) { ui.toast('Erro ao salvar: ' + (e as Error).message); }
+    } catch (e) { w?.close(); ui.toast('Erro ao salvar: ' + (e as Error).message); }
     setBusy(false);
   };
 
@@ -208,9 +213,11 @@ function Fila({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: Order
   const shown = all ? cols : [fs];
   const advance = async (o: Order) => {
     const nx = STATUS[o.status].next!;
+    // WhatsApp automático: abre a conversa já com a mensagem do novo status
+    if (cfg.wa?.auto && o.phone && cfg.wa.on.includes(nx)) window.open(waLink(o.phone, fillMsg(cfg.msgs[nx], { ...o, status: nx })), '_blank');
     await setStatus(o, nx);
     if (nx === 'entregue' && !o.paid) ui.toast(`Pedido nº ${o.num} entregue — falta cobrar`);
-    if (o.phone && (nx === 'pronto')) ui.toast(`Pedido nº ${o.num} pronto. Toque em WhatsApp para avisar ${o.client}.`);
+    if (o.phone && nx === 'pronto' && !(cfg.wa?.auto && cfg.wa.on.includes('pronto'))) ui.toast(`Pedido nº ${o.num} pronto. Toque em WhatsApp para avisar ${o.client}.`);
   };
   const Ticket = ({ o }: { o: Order }) => {
     const min = Math.round((Date.now() - o.at) / 6e4);

@@ -96,31 +96,31 @@ export default function Resultados() {
   const tByMode = (m: string) => { const l = cur.filter(o => o.mode === m); return l.length ? l.reduce((s, o) => s + orderTotal(o), 0) / l.length : 0; };
 
   const delta = (c: number, p: number) => {
-    if (!p) return <span className="s">sem comparação anterior</span>;
+    if (!p) return <span className="s">sem base anterior</span>;
     const d = (c - p) / Math.abs(p);
-    return <span className="s"><span className={d >= 0 ? 'up' : 'down'}>{d >= 0 ? '+' : ''}{pct(d)}</span> vs período anterior</span>;
+    return <span className="s"><span className={d >= 0 ? 'up' : 'down'}>{d >= 0 ? '+' : ''}{pct(d)}</span> vs anterior</span>;
   };
   type Card = [string, string, ReactNode];
   const cards: Card[] = met === 'fat' ? [
     ['Faturamento', brl(S.rev), delta(S.rev, SP.rev)],
     ['Pedidos', String(S.n), delta(S.n, SP.n)],
-    ['Custo dos produtos', brl(S.cost), <span className="s">{S.rev ? pct(S.cost / S.rev) : '0%'} do faturamento</span>],
+    ['Custo produtos', brl(S.cost), <span className="s">{S.rev ? pct(S.cost / S.rev) : '0%'} do faturamento</span>],
     ['Lucro bruto', brl(S.rev - S.cost), <span className="s">margem bruta {S.rev ? pct((S.rev - S.cost) / S.rev) : '0%'}</span>],
-    ['Despesas operacionais', brl(sum(desp)), <span className="s">{desp.length} lançamento(s)</span>],
-    ['Resultado operacional', brl(R), delta(R, RP)]
+    ['Despesas', brl(sum(desp)), <span className="s">{desp.length} lançamento(s)</span>],
+    ['Resultado oper.', brl(R), delta(R, RP)]
   ] : met === 'qtd' ? [
     ['Itens vendidos', nf(S.items), delta(S.items, SP.items)],
     ['Pedidos', String(S.n), delta(S.n, SP.n)],
-    ['Itens por pedido', S.n ? (S.items / S.n).toFixed(1).replace('.', ',') : '0', <span className="s">média do período</span>],
+    ['Itens/pedido', S.n ? (S.items / S.n).toFixed(1).replace('.', ',') : '0', <span className="s">média do período</span>],
     ['Mais vendido', top[0]?.[0] || '—', <span className="s">{top[0] ? top[0][1] + ' un.' : 'sem vendas'}</span>],
-    [per === 'dia' ? 'Média por hora' : 'Média por dia', nf(S.items / (per === 'dia' ? Math.max(1, series.filter(s => s[1] > 0).length) : len)), <span className="s">itens</span>],
+    [per === 'dia' ? 'Média/hora' : 'Média/dia', nf(S.items / (per === 'dia' ? Math.max(1, series.filter(s => s[1] > 0).length) : len)), <span className="s">itens</span>],
     ['Pico de vendas', peak[1] ? lab(peak[0]) : '—', <span className="s">{peak[1] ? nf(peak[1]) + ' itens' : 'sem vendas'}</span>]
   ] : [
     ['Ticket médio', brl(S.tm), delta(S.tm, SP.tm)],
     ['Maior pedido', brl(S.max), <span className="s">no período</span>],
     ['Menor pedido', brl(S.min), <span className="s">no período</span>],
-    ['Ticket no local', brl(tByMode('local')), <span className="s">{cur.filter(o => o.mode === 'local').length} pedido(s)</span>],
-    ['Ticket para viagem', brl(tByMode('viagem')), <span className="s">{cur.filter(o => o.mode === 'viagem').length} pedido(s)</span>],
+    ['Ticket local', brl(tByMode('local')), <span className="s">{cur.filter(o => o.mode === 'local').length} pedido(s)</span>],
+    ['Ticket viagem', brl(tByMode('viagem')), <span className="s">{cur.filter(o => o.mode === 'viagem').length} pedido(s)</span>],
     ['Faturamento', brl(S.rev), <span className="s">{S.n} pedido(s)</span>]
   ];
 
@@ -145,7 +145,7 @@ export default function Resultados() {
     {head}
     <div className="row sb" style={{ marginBottom: 10 }}><h2 style={{ margin: 0 }}>{label}</h2>
       <div className="row noprint"><button className="btn sm" onClick={exp}>Exportar XLSX</button><button className="btn sm" onClick={() => window.print()}>Imprimir / PDF</button></div></div>
-    <div className="kpis">{cards.map((c, i) => <div key={c[0]} className={'card kpi' + (i === 0 ? ' hot' : '')}><div className="l">{c[0]}</div><div className="v" title={c[1]}>{c[1]}</div>{c[2]}</div>)}</div>
+    <div className="kpis">{cards.map((c, i) => <div key={c[0]} className={'card kpi' + (i === 0 ? ' hot' : '')}><div className="l" title={c[0]}>{c[0]}</div><div className="v" title={c[1]}>{c[1]}</div>{c[2]}</div>)}</div>
 
     <div className="card">
       <div className="row sb"><h2 style={{ margin: 0 }}>{met === 'fat' ? 'Faturamento' : met === 'qtd' ? 'Quantidade vendida' : 'Ticket médio'} por {per === 'dia' ? 'hora' : 'dia'}</h2>

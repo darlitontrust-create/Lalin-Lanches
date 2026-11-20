@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '../store';
-import { commit, inc, useCol } from '../db';
+import { useCol } from '../db';
 import type { Loss } from '../types';
-import { brl, dbr, ds, exportXlsx, isOn, newId, nf, nm, num } from '../utils';
-import { deleteLoss, editLoss } from '../ops';
+import { brl, dbr, ds, exportXlsx, isOn, nf, nm, num } from '../utils';
+import { createLoss, deleteLoss, editLoss } from '../ops';
 import { ModalHead } from '../components/ui';
 import { DeleteReasonModal } from '../components/DeleteModal';
 import { Empty, HBars } from '../components/ui';
@@ -26,13 +26,8 @@ export default function Perdas() {
     if (!p || !(q > 0)) return ui.toast('Escolha o produto e a quantidade');
     setBusy(true);
     try {
-      const moveId = newId();
-      await commit([
-        { op: 'add', path: 'losses', data: { pid: p.id, pname: p.name, cat: nm(cfg.cats, p.cat), qty: q, motivo: mot, date, user: user.name, value: q * p.cost, at: Date.now(), moveId } },
-        { op: 'update', path: 'products', id: p.id, data: { stock: inc(-q) } },
-        { op: 'set', path: 'moves', id: moveId, data: { pid: p.id, pname: p.name, t: 'Baixa', motivo: 'Perda', qty: q, val: p.cost, date, obs: mot, user: user.name, at: Date.now() } }
-      ]);
-      ui.toast(`Perda lançada e estoque baixado: ${nf(q)} ${p.unit} de ${p.name}`); setQty('');
+      await createLoss(p, q, mot, date, nm(cfg.cats, p.cat), user, products);
+      ui.toast(`Perda lançada e estoque baixado: ${nf(q)} ${p.unit} de ${p.name}${p.comp?.length ? ' + matéria-prima vinculada' : ''}`); setQty('');
     } catch (e) { ui.toast('Erro: ' + (e as Error).message); }
     setBusy(false);
   };
@@ -59,7 +54,7 @@ export default function Perdas() {
           <label>Data<input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
           <label>Responsável<input value={user.name} readOnly /></label>
         </div>
-        <p className="mute">Ao lançar, o estoque é baixado automaticamente. Valor = quantidade × custo unitário{p ? ` (${brl(p.cost)})` : ''}.</p>
+        <p className="mute">Ao lançar, o estoque é baixado automaticamente — inclusive a matéria-prima vinculada ao produto. Valor = quantidade × custo unitário{p ? ` (${brl(p.cost)})` : ''}.</p>
         <div className="row end"><button className="btn p" disabled={busy} onClick={save}>Lançar perda</button></div>
       </div>
       <div className="card kpi hot" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>

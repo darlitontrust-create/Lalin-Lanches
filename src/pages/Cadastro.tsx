@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
 import { useApp } from '../store';
-import { add, commit, patch, put, type Op } from '../db';
+import { commit, patch, put, type Op } from '../db';
 import { menuOps } from '../seed';
 import type { Coded, Config, Ingredient, Product } from '../types';
-import { STATUS, abbr, brl, col, dfull, ds, exportXlsx, genCode, isOn, nm, num, pct, readXlsx } from '../utils';
+import { STATUS, abbr, brl, col, dfull, ds, exportXlsx, genCode, isOn, newId, nf, nm, num, pct, readXlsx } from '../utils';
 import { Empty, ModalHead, Tabs } from '../components/ui';
 
 type Tab = 'prod' | 'tab' | 'pag' | 'desp' | 'msg';
@@ -89,11 +89,28 @@ function Produtos() {
     {!products.length && <div className="note" style={{ marginTop: 12 }}>Nenhum produto cadastrado. <button className="btn sm" onClick={loadMenu}>Carregar cardápio inicial</button></div>}
     {l.length ? <div className="scroll" style={{ marginTop: 10 }}><table className="stack"><thead><tr><th>Código</th><th>Nome</th><th>Classe</th><th className="n">Custo</th><th className="n">Preço</th><th className="n">Margem</th><th>Status</th><th></th></tr></thead>
       <tbody>{l.map(p => <tr key={p.id}><td><code>{p.code}</code></td>
-        <td><b>{p.name}</b>{p.ingr.length > 0 && <><br /><span className="mute">{p.ingr.length} ingredientes · {p.ingr.filter(x => x.r).length} removíveis</span></>}</td>
+        <td><b>{p.name}</b>{p.ingr.length > 0 && <><br /><span className="mute">{p.ingr.length} ingredientes · {p.ingr.filter(x => x.r).length} removíveis</span></>}
+          {p.comp?.length ? <><br /><span className="mute">Baixa: {p.comp.map(c => { const m = products.find(x => x.id === c.pid); return `${nf(c.qty)} ${m?.unit || ''} ${m?.name || '?'}`; }).join(' + ')}</span></> : null}
+          {p.type !== 'RV' && products.some(x => x.comp?.some(c => c.pid === p.id)) && <><br /><span className="mute">Vinculado a: {products.filter(x => x.comp?.some(c => c.pid === p.id)).map(x => x.name).join(', ')}</span></>}</td>
         <td>{nm(cfg.classes, p.cls)}</td><td className="n">{brl(p.cost)}</td><td className="n">{p.price ? brl(p.price) : '—'}</td><td className="n">{mg(p)}</td>
         <td><button className={'chip' + (p.active ? ' on' : '')} style={{ minHeight: 32 }} onClick={() => patch('products', p.id, { active: !p.active })}>{p.active ? 'Ativo' : 'Inativo'}</button></td>
         <td><button className="btn sm" onClick={() => ui.modal(<ProductModal p={p} />)}>Editar</button></td></tr>)}</tbody></table></div>
       : products.length ? <Empty>Nada encontrado.</Empty> : null}
+  </>;
+}
+
+type LinkRow = { pid: string; qty: string };
+/** Linhas de vínculo produto + quantidade (fora do modal para não perder o foco ao digitar). */
+function LinkRows({ rows, setRows, pool, label }: { rows: LinkRow[]; setRows: (r: LinkRow[]) => void; pool: Product[]; label: (pid: string) => string }) {
+  return <>
+    {rows.map((r, i) => <div key={i} className="row li" style={{ flexWrap: 'nowrap', padding: '6px 0' }}>
+      <select value={r.pid} onChange={x => setRows(rows.map((y, k) => (k === i ? { ...y, pid: x.target.value } : y)))} aria-label="Produto">
+        <option value="">Escolha…</option>{pool.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+      <input type="number" inputMode="decimal" step="0.001" value={r.qty} onChange={x => setRows(rows.map((y, k) => (k === i ? { ...y, qty: x.target.value } : y)))} style={{ width: 110 }} aria-label="Quantidade" />
+      <span className="mute" style={{ minWidth: 70 }}>{label(r.pid)}</span>
+      <button className="btn sm" onClick={() => setRows(rows.filter((_, k) => k !== i))} aria-label="Remover vínculo">×</button>
+    </div>)}
+    <button className="btn sm" style={{ marginTop: 6 }} onClick={() => setRows([...rows, { pid: '', qty: '1' }])}>+ Vincular produto</button>
   </>;
 }
 
@@ -106,31 +123,61 @@ function ProductModal({ p }: { p?: Product }) {
   });
   const [ingr, setIngr] = useState<Ingredient[]>(p?.ingr.map(x => ({ ...x })) || []);
   const [ni, setNi] = useState('');
+  // revenda: o que este produto baixa de matéria-prima a cada unidade
+  const [comp, setComp] = useState<{ pid: string; qty: string }[]>((p?.comp || []).map(c => ({ pid: c.pid, qty: String(c.qty) })));
+  // matéria-prima: em quais produtos de revenda ela é baixada (e quanto por unidade vendida)
+  const [links, setLinks] = useState<{ pid: string; qty: string }[]>(p ? products.filter(x => x.comp?.some(c => c.pid === p.id)).map(x => ({ pid: x.id, qty: String(x.comp!.find(c => c.pid === p.id)!.qty) })) : []);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof e, v: string | boolean) => setE({ ...e, [k]: v });
-  const code = isNew ? genCode(products, e.type, e.cat, e.cls) : p!.code;
+  const others = products.filter(x => x.id !== p?.id);
+  const moved = !isNew && (e.type !== p!.type || e.cat !== p!.cat || e.cls !== p!.cls);
+  const code = isNew || moved ? genCode(others, e.type, e.cat, e.cls) : p!.code;
   const price = num(e.price), cost = num(e.cost);
+  const isRV = e.type === 'RV';
+  const compCost = comp.reduce((s, c) => s + num(c.qty) * (products.find(x => x.id === c.pid)?.cost || 0), 0);
   const close = () => ui.modal(null);
   const opts = (a: Coded[], list: string, cur: string) => a.filter(x => isOn(cfg, list, x.c) || x.c === cur).map(x => <option key={x.c} value={x.c}>{x.n} ({x.c})</option>);
+  const unitOf = (pid: string) => products.find(x => x.id === pid)?.unit || '';
+
   const save = async () => {
     if (!e.name.trim()) return ui.toast('Informe o nome do produto');
+    const cl = comp.filter(c => c.pid && num(c.qty) > 0).map(c => ({ pid: c.pid, qty: num(c.qty) }));
+    const ll = links.filter(c => c.pid && num(c.qty) > 0).map(c => ({ pid: c.pid, qty: num(c.qty) }));
     setBusy(true);
-    const data = { name: e.name.trim(), desc: e.desc.trim(), unit: e.unit, min: num(e.min), cost, price, active: e.active, ingr: e.type === 'RV' ? ingr : [] };
+    const id = p?.id || newId();
+    const data = { name: e.name.trim(), desc: e.desc.trim(), unit: e.unit, min: num(e.min), cost, price, active: e.active, ingr: isRV ? ingr : [], comp: isRV ? cl : [],
+      type: e.type, cat: e.cat, cls: e.cls, code };
+    const ops: Op[] = [];
+    if (isNew) ops.push({ op: 'set', path: 'products', id, data: { ...data, stock: num(e.stock), unavailable: false, prices: [{ v: price, from: e.vg }] } });
+    else ops.push({ op: 'update', path: 'products', id, data: { ...data, ...(price !== p!.price ? { prices: [...(p!.prices || []), { v: price, from: e.vg }] } : {}),
+      ...(moved ? { codes: [...(p!.codes || []), p!.code] } : {}) } });
+    if (!isRV) {
+      // grava o vínculo dentro de cada produto de revenda afetado
+      for (const rv of products.filter(x => x.type === 'RV')) {
+        const want = ll.find(l => l.pid === rv.id)?.qty || 0;
+        const has = rv.comp?.find(c => c.pid === id)?.qty || 0;
+        if (want === has) continue;
+        const nc = (rv.comp || []).filter(c => c.pid !== id);
+        if (want > 0) nc.push({ pid: id, qty: want });
+        ops.push({ op: 'update', path: 'products', id: rv.id, data: { comp: nc } });
+      }
+    }
     try {
-      if (isNew) await add('products', { ...data, code, type: e.type, cat: e.cat, cls: e.cls, stock: num(e.stock), unavailable: false, prices: [{ v: price, from: e.vg }] });
-      else await patch('products', p!.id, { ...data, ...(price !== p!.price ? { prices: [...(p!.prices || []), { v: price, from: e.vg }] } : {}) });
-      ui.toast(isNew ? 'Produto cadastrado' : 'Produto atualizado'); close();
+      await commit(ops);
+      ui.toast(isNew ? 'Produto cadastrado' : moved ? `Produto atualizado · novo código ${code}` : 'Produto atualizado'); close();
     } catch (er) { ui.toast('Erro: ' + (er as Error).message); setBusy(false); }
   };
+
   return <>
     <ModalHead title={isNew ? 'Novo produto' : 'Editar produto'} onClose={close} />
-    <p>Código <code style={{ fontSize: 15, fontWeight: 700 }}>{code}</code> <span className="mute">· automático: tipo.categoria.classe.sequencial</span></p>
+    <p>Código <code style={{ fontSize: 15, fontWeight: 700 }}>{code}</code> <span className="mute">· automático: tipo.categoria.classe.sequencial</span>
+      {moved && <><br /><span className="note" style={{ display: 'inline-block', marginTop: 6, padding: '4px 10px' }}>A classificação mudou: o código passa de <b>{p!.code}</b> para <b>{code}</b>. O código antigo fica guardado no histórico.</span></>}</p>
     <div className="fg">
       <label className="w2">Nome<input value={e.name} onChange={x => set('name', x.target.value)} autoFocus /></label>
       <label className="w2">Descrição<input value={e.desc} onChange={x => set('desc', x.target.value)} /></label>
-      <label>Tipo<select value={e.type} disabled={!isNew} onChange={x => set('type', x.target.value)}>{opts(cfg.types, 'types', e.type)}</select></label>
-      <label>Categoria<select value={e.cat} disabled={!isNew} onChange={x => set('cat', x.target.value)}>{opts(cfg.cats, 'cats', e.cat)}</select></label>
-      <label>Classe<select value={e.cls} disabled={!isNew} onChange={x => set('cls', x.target.value)}>{opts(cfg.classes, 'classes', e.cls)}</select></label>
+      <label>Tipo<select value={e.type} onChange={x => set('type', x.target.value)}>{opts(cfg.types, 'types', e.type)}</select></label>
+      <label>Categoria<select value={e.cat} onChange={x => set('cat', x.target.value)}>{opts(cfg.cats, 'cats', e.cat)}</select></label>
+      <label>Classe<select value={e.cls} onChange={x => set('cls', x.target.value)}>{opts(cfg.classes, 'classes', e.cls)}</select></label>
       <label>Unidade<select value={e.unit} onChange={x => set('unit', x.target.value)}>{cfg.units.filter(u => isOn(cfg, 'units', u) || u === e.unit).map(u => <option key={u}>{u}</option>)}</select></label>
       <label>Estoque mínimo<input type="number" inputMode="decimal" value={e.min} onChange={x => set('min', x.target.value)} /></label>
       <label>Estoque atual<input type="number" inputMode="decimal" value={e.stock} disabled={!isNew} title={isNew ? '' : 'Altere pelo módulo Estoque'} onChange={x => set('stock', x.target.value)} /></label>
@@ -140,15 +187,24 @@ function ProductModal({ p }: { p?: Product }) {
       <label>Vigência do preço<input type="date" value={e.vg} onChange={x => set('vg', x.target.value)} /></label>
       <label className="ck"><input type="checkbox" checked={e.active} onChange={x => set('active', x.target.checked)} /> Produto ativo</label>
     </div>
-    {e.type === 'RV' && <>
-      <h3>Ingredientes</h3>
+    {isRV ? <>
+      <h3>Composição · baixa de estoque</h3>
+      <p className="mute" style={{ marginTop: -4 }}>A cada unidade vendida ou perdida deste produto, o estoque destes itens também é baixado (ex.: 1 Pão com pernil baixa 1 Pão de sal e 1 porção de Pernil).</p>
+      <LinkRows rows={comp} setRows={setComp} pool={others.filter(x => x.type !== 'RV')} label={pid => (pid ? unitOf(pid) + ' por un.' : '')} />
+      {comp.some(c => c.pid) && <p className="mute">Custo da composição: <b>{brl(compCost)}</b> por unidade <button className="btn sm" onClick={() => set('cost', compCost.toFixed(2))}>Usar como custo</button></p>}
+      <h3>Ingredientes (pedido)</h3>
       {ingr.length ? ingr.map((x, i) => <div key={i} className="row sb li" style={{ padding: '6px 0' }}><span>{x.n}</span><span className="row">
         <label className="ck"><input type="checkbox" checked={x.r} onChange={ev => setIngr(ingr.map((y, k) => (k === i ? { ...y, r: ev.target.checked } : y)))} /> Cliente pode retirar</label>
         <button className="btn sm" onClick={() => setIngr(ingr.filter((_, k) => k !== i))}>Remover</button></span></div>) : <p className="mute">Sem ingredientes cadastrados.</p>}
       <div className="row" style={{ flexWrap: 'nowrap', marginTop: 8 }}><input value={ni} onChange={x => setNi(x.target.value)} placeholder="Novo ingrediente" onKeyDown={x => { if (x.key === 'Enter' && ni.trim()) { setIngr([...ingr, { n: ni.trim(), r: true }]); setNi(''); } }} />
         <button className="btn" onClick={() => { if (ni.trim()) { setIngr([...ingr, { n: ni.trim(), r: true }]); setNi(''); } }}>Adicionar</button></div>
+    </> : <>
+      <h3>Vincular a produtos de revenda</h3>
+      <p className="mute" style={{ marginTop: -4 }}>Escolha os produtos de revenda que usam este item e quanto ({e.unit}) é baixado a cada unidade vendida ou perdida. Ex.: Pão com pernil → 1.</p>
+      <LinkRows rows={links} setRows={setLinks} pool={products.filter(x => x.type === 'RV')} label={() => e.unit + ' por un.'} />
     </>}
-    {!isNew && <><h3>Histórico de preços</h3>{(p!.prices || []).slice().reverse().map((x, i) => <p key={i} style={{ margin: '2px 0' }}>{brl(x.v)} <span className="mute">vigente desde {dfull(x.from)}</span></p>)}</>}
+    {!isNew && <><h3>Histórico de preços</h3>{(p!.prices || []).slice().reverse().map((x, i) => <p key={i} style={{ margin: '2px 0' }}>{brl(x.v)} <span className="mute">vigente desde {dfull(x.from)}</span></p>)}
+      {p!.codes?.length ? <p className="mute">Códigos anteriores: {p!.codes.join(', ')}</p> : null}</>}
     <div className="row end">
       <button className="btn" onClick={close}>Cancelar</button><button className="btn p" disabled={busy} onClick={save}>Salvar produto</button></div>
   </>;
@@ -255,11 +311,18 @@ function CatDespesas() {
 function Mensagens() {
   const { cfg, ui } = useApp();
   const [m, setM] = useState<Record<string, string>>({ ...cfg.msgs });
+  const [wa, setWa] = useState(cfg.wa || { auto: false, on: [] });
+  const tog = (s: string) => setWa({ ...wa, on: wa.on.includes(s) ? wa.on.filter(x => x !== s) : [...wa.on, s] });
   return <>
-    <p className="mute">Use <b>{'{nome}'}</b> para o primeiro nome do cliente, <b>{'{numero}'}</b> para o nº do pedido e <b>{'{status}'}</b> para o status. A mensagem abre no WhatsApp do aparelho, pronta para enviar.</p>
+    <div className="card" style={{ marginBottom: 14 }}>
+      <label className="ck" style={{ fontSize: 15 }}><input type="checkbox" checked={wa.auto} onChange={e => setWa({ ...wa, auto: e.target.checked })} /> Abrir o WhatsApp automaticamente quando o status do pedido mudar</label>
+      <p className="mute">Vale para clientes que informaram o telefone. A conversa abre com a mensagem pronta; no WhatsApp Web ou no celular é só tocar em <b>Enviar</b>. Quando desligado, use o botão WhatsApp de cada pedido na fila.</p>
+      <div className="chips">{(Object.keys(STATUS) as (keyof typeof STATUS)[]).map(s => <button key={s} disabled={!wa.auto} className={'chip' + (wa.on.includes(s) ? ' on' : '')} onClick={() => tog(s)}>{STATUS[s].n}</button>)}</div>
+    </div>
+    <p className="mute">Use <b>{'{nome}'}</b> para o primeiro nome do cliente, <b>{'{numero}'}</b> para o nº do pedido e <b>{'{status}'}</b> para o status.</p>
     <div className="fg" style={{ gridTemplateColumns: '1fr' }}>
       {(Object.keys(STATUS) as (keyof typeof STATUS)[]).map(s => <label key={s}>{STATUS[s].n}<textarea value={m[s] || ''} onChange={e => setM({ ...m, [s]: e.target.value })} /></label>)}
     </div>
-    <div className="row end"><button className="btn p" onClick={async () => { await saveCfg({ msgs: m }); ui.toast('Mensagens salvas'); }}>Salvar mensagens</button></div>
+    <div className="row end"><button className="btn p" onClick={async () => { await saveCfg({ msgs: m, wa }); ui.toast('Mensagens salvas'); }}>Salvar mensagens</button></div>
   </>;
 }

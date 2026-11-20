@@ -15,6 +15,8 @@ export default function CaixaPage() {
   const orders = useCol<Order>('orders', { where: [['cx', '==', caixa?.id || '-']] }, !!caixa);
   const hist = useCol<Caixa>('caixas', { order: ['at', 'desc'], max: 60 });
   const [show, setShow] = useState(15);
+  const [histOpen, setHistOpen] = useState(() => { try { return localStorage.getItem('lalin-hist') !== '0'; } catch { return true; } });
+  const toggleHist = () => { const v = !histOpen; setHistOpen(v); try { localStorage.setItem('lalin-hist', v ? '1' : '0'); } catch { /* ignore */ } };
   const closed = (hist || []).filter(c => !c.open);
   const s = caixa && orders ? caixaStats(caixa, orders) : null;
 
@@ -44,12 +46,14 @@ export default function CaixaPage() {
     </>}
     <VendasDoDia />
     <div className="card mt">
-      <div className="row sb"><h2>Fechamentos anteriores</h2><div className="row noprint"><button className="btn sm" onClick={exportHist}>Exportar XLSX</button><button className="btn sm" onClick={() => window.print()}>Imprimir / PDF</button></div></div>
-      {closed.length ? <div className="scroll"><table className="stack"><thead><tr><th>Abertura</th><th>Fechamento</th><th>Responsável</th><th className="n">Vendas</th><th className="n">Vendido</th><th className="n">Esperado em dinheiro</th><th className="n">Contado</th><th className="n">Diferença</th>{admin && <th></th>}</tr></thead>
+      <div className="row sb"><h2 style={{ margin: 0 }}>Fechamentos anteriores <span className="mute">({closed.length})</span></h2><div className="row noprint">
+        {histOpen && <><button className="btn sm" onClick={exportHist}>Exportar XLSX</button><button className="btn sm" onClick={() => window.print()}>Imprimir / PDF</button></>}
+        <button className="btn sm" onClick={toggleHist} aria-expanded={histOpen}>{histOpen ? 'Fechar ▴' : 'Abrir ▾'}</button></div></div>
+      {!histOpen ? null : closed.length ? <div style={{ marginTop: 10 }}><div className="scroll"><table className="stack"><thead><tr><th>Abertura</th><th>Fechamento</th><th>Responsável</th><th className="n">Vendas</th><th className="n">Vendido</th><th className="n">Esperado em dinheiro</th><th className="n">Contado</th><th className="n">Diferença</th>{admin && <th></th>}</tr></thead>
         <tbody>{closed.slice(0, show).map(c => <tr key={c.id}><td>{dt(c.at)}</td><td>{c.closedAt ? dt(c.closedAt) : ''}</td><td>{c.closedBy || c.by}</td><td className="n">{c.orders || 0}</td>
           <td className="n">{brl(c.sold || 0)}</td><td className="n">{brl(c.expected || 0)}</td><td className="n">{brl(c.counted || 0)}</td>
           <td className="n" style={{ color: (c.diff || 0) < 0 ? 'var(--red)' : 'var(--ok)' }}>{brl(c.diff || 0)}</td>{admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<CaixaOrdersModal c={c} />)}>Pedidos</button><button className="btn sm" onClick={() => ui.modal(<ClosingEditModal c={c} />)}>Contado</button></div></td>}</tr>)}</tbody></table>
-        {closed.length > show && <button className="btn sm" onClick={() => setShow(show + 15)}>Ver mais</button>}</div>
+        {closed.length > show && <button className="btn sm" onClick={() => setShow(show + 15)}>Ver mais</button>}</div></div>
         : <Empty>Nenhum fechamento registrado ainda.</Empty>}
     </div>
   </>;

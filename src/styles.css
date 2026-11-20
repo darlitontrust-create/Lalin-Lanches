@@ -93,7 +93,7 @@ td input{min-height:38px;width:96px;text-align:right}
 @media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--line)}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mute);font-size:12px}.stack td:empty{display:none}}
 /* indicadores e gráficos */
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
-.kpi .v{font:800 clamp(21px,2.4vw,28px)/1.1 'Baloo 2',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi .l{color:var(--mute);font-size:13px;font-weight:600}
+.kpi .v{font:800 clamp(21px,2.4vw,28px)/1.1 'Baloo 2',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi .l{color:var(--mute);font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kpi .s{font-size:12px;color:var(--mute);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi .up{color:var(--ok);font-weight:700}.kpi .down{color:var(--red);font-weight:700}
 .kpi.hot{background:linear-gradient(135deg,var(--red),#ff8a3d);color:#fff}.kpi.hot .l,.kpi.hot .s{color:rgba(255,255,255,.88)}.kpi.hot .up,.kpi.hot .down{color:#fff}
 .g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.g3{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px}

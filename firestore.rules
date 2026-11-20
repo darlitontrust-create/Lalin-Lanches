@@ -63,9 +63,14 @@ service cloud.firestore {
     }
 
     match /deletions/{id} {
-      // Log de exclusões: só o administrador vê e grava; ninguém altera ou apaga
-      allow read, create: if isAdmin();
-      allow update, delete: if false;
+      // Log de exclusões: só o administrador vê, grava e limpa (com senha no sistema); ninguém altera
+      allow read, create, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    match /secure/{id} {
+      // senha do administrador (guardada como hash)
+      allow read, write: if isAdmin();
     }
 
     match /expenses/{id} {

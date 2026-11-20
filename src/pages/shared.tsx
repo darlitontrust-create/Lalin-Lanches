@@ -4,7 +4,7 @@ import { useApp } from '../store';
 import { add, patch, useCol } from '../db';
 import { cancelOrder, caixaStats } from '../ops';
 import type { Order } from '../types';
-import { STATUS, brl, hm, isOpenOrder, num, orderTotal } from '../utils';
+import { STATUS, brl, fillMsg, hm, isOpenOrder, num, orderTotal, waLink } from '../utils';
 import { ModalHead } from '../components/ui';
 
 export function CaixaOpen() {
@@ -31,12 +31,13 @@ export function CaixaOpen() {
 }
 
 export function CancelModal({ order, after }: { order: Order; after?: () => void }) {
-  const { user, ui, products } = useApp();
+  const { user, ui, products, cfg } = useApp();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const back = () => (after ? after() : ui.modal(null));
   const go = async () => {
     setBusy(true);
+    if (cfg.wa?.auto && order.phone && cfg.wa.on.includes('cancelado')) window.open(waLink(order.phone, fillMsg(cfg.msgs.cancelado, { ...order, status: 'cancelado' })), '_blank');
     try {
       await cancelOrder(order, reason, user, products);
       ui.toast(`Pedido nº ${order.num} cancelado` + (order.paid ? ' · pagamento estornado e itens devolvidos ao estoque' : ''));
