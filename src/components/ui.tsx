@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
 
+/** Marca Lalin: chama com o "L" da Lalin e uma faísca. As cores seguem a paleta ativa. */
 export const Logo = ({ size = 44 }: { size?: number }) => (
   <svg className="logo" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-    <defs>
-      <linearGradient id="lgb" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style={{ stopColor: 'var(--logo1, #E63946)' }} /><stop offset="1" style={{ stopColor: 'var(--logo2, #FF8A3D)' }} /></linearGradient>
-      <linearGradient id="lgg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".35" /><stop offset=".55" stopColor="#fff" stopOpacity="0" /></linearGradient>
-    </defs>
-    <rect width="64" height="64" rx="18" fill="url(#lgb)" /><rect width="64" height="64" rx="18" fill="url(#lgg)" />
-    <path d="M14 48 50 30" stroke="#7a1d24" strokeOpacity=".35" strokeWidth="3" strokeLinecap="round" />
-    <path d="M33 9c1.5 8.5 13 13.5 13 27a14 14 0 0 1-28 0c0-7 3.5-11.5 7.5-15 .3 5.5 2.6 8.6 5.6 9.6C29 23 31.5 16 33 9z" fill="#fff" />
-    <path d="M32.5 30c4 3 7 6.2 7 10.5a7.5 7.5 0 0 1-15 0c0-3 1.5-5 3.5-6.5.5 2.5 1.7 3.6 3.2 4-.8-3 0-5.7 1.3-8z" fill="#FFC857" />
+    <defs><linearGradient id="lgb" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style={{ stopColor: 'var(--logo-bg1, #17181C)' }} /><stop offset="1" style={{ stopColor: 'var(--logo-bg2, #2A2C33)' }} />
+    </linearGradient></defs>
+    <rect width="64" height="64" rx="16" fill="url(#lgb)" />
+    <path d="M33 9C35.5 17 47 22 47 37C47 46 40.5 53 32 53C23.5 53 17 46.5 17 38C17 30.5 21 25.5 25.5 21.5C25.8 26.5 28 29.5 30.5 30.5C29 23.5 30.5 15.5 33 9Z" style={{ fill: 'var(--logo-mark, #FFC21A)' }} />
+    <path d="M26.5 34.5a1.5 1.5 0 0 1 1.5-1.5h2.5a1.5 1.5 0 0 1 1.5 1.5V42H38a1.5 1.5 0 0 1 1.5 1.5v1.8a1.5 1.5 0 0 1-1.5 1.5H28a1.5 1.5 0 0 1-1.5-1.5Z" style={{ fill: 'var(--logo-bg1, #17181C)' }} />
+    <circle cx="45" cy="15" r="3.2" style={{ fill: 'var(--logo-mark2, #FFE39A)' }} />
   </svg>
 );
 

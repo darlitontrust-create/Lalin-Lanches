@@ -1,8 +1,8 @@
 // Service worker do Lalin Lanches: permite instalar como app e abrir mesmo com internet instável.
 // Os dados (pedidos, estoque...) ficam no Firestore, que tem cache próprio; aqui só guardamos os arquivos do site.
-const CACHE = 'lalin-v2';
+const CACHE = 'lalin-v3';
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './favicon.svg'])).catch(() => {}));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-v2-192.png', './icon-v2-512.png', './favicon.svg'])).catch(() => {}));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {
