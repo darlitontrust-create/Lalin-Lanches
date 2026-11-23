@@ -24,6 +24,7 @@ export const DEFAULT_CONFIG: Config = {
   cardFee: 2.5,
   off: [],
   wa: { auto: false, on: ['aguardando', 'pronto'] },
+  kitchenCats: ['COM'],
   delReasons: ['Lançamento duplicado', 'Lançamento errado', 'Valor ou quantidade errada', 'Lançamento de teste', 'Cliente desistiu', 'Outro']
 };
 

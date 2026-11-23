@@ -262,8 +262,15 @@ function CodedList({ k, title, len }: { k: 'types' | 'cats' | 'classes'; title: 
     while (arr.some(x => x.c === c)) c = base.slice(0, len - 1) + i++;
     await saveCfg({ [k]: [...arr, { c, n }] }); setV(''); ui.toast(`Adicionado: ${n} (${c})`);
   };
+  const kc = cfg.kitchenCats || ['COM'];
   return <div className="card"><h2>{title}</h2>
     <div className="chips">{arr.map(x => <Item key={x.c} list={k} value={x.c} label={x.n} code={x.c} />)}</div>
+    {k === 'cats' && <>
+      <h3>Vão para a fila da cozinha</h3>
+      <div className="chips">{arr.map(x => <button key={x.c} className={'chip' + (kc.includes(x.c) ? ' on' : '')}
+        onClick={() => saveCfg({ kitchenCats: kc.includes(x.c) ? kc.filter(c => c !== x.c) : [...kc, x.c] })}>{x.n}</button>)}</div>
+      <p className="mute">Itens dessas categorias entram na fila de produção. Os demais (ex.: bebidas) aparecem só na comanda.</p>
+    </>}
     <div className="row" style={{ marginTop: 12, flexWrap: 'nowrap' }}><input value={v} onChange={e => setV(e.target.value)} placeholder="Novo item" /><button className="btn" onClick={addIt}>Adicionar</button></div></div>;
 }
 function StrList({ k, title, ph }: { k: 'units' | 'pays' | 'lossReasons' | 'expenseCats' | 'investCats' | 'delReasons'; title: string; ph: string }) {

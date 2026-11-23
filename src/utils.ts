@@ -28,6 +28,11 @@ export const orderTotal = (o: Pick<Order, 'items'>) => itemsTotal(o.items);
 export const orderCost = (o: Pick<Order, 'items'>) => o.items.reduce((s, i) => s + i.qty * i.cost, 0);
 /** Venda válida = paga, não cancelada e não estornada. */
 export const isSale = (o: Order) => o.paid && o.status !== 'cancelado' && !o.pay?.refunded;
+/** Formas de pagamento de uma venda (pagamento misto/dividido vira várias partes). */
+export const payParts = (o: Order): { m: string; value: number }[] =>
+  o.pay?.parts?.length ? o.pay.parts : o.pay ? [{ m: o.pay.m, value: itemsTotal(o.items) }] : [];
+/** Texto curto do pagamento: "PIX" ou "PIX R$ 20,00 + Dinheiro R$ 10,00". */
+export const payLabel = (o: Order) => !o.pay ? '' : o.pay.parts?.length ? o.pay.parts.map(p => `${p.who ? p.who + ': ' : ''}${p.m} ${brl(p.value)}`).join(' + ') : o.pay.m;
 /** Pedido que impede o fechamento do caixa. */
 export const isOpenOrder = (o: Order) => o.status !== 'cancelado' && !(o.status === 'entregue' && o.paid);
 

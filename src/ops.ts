@@ -1,36 +1,75 @@
 // Regras de negócio que gravam em mais de uma coleção ao mesmo tempo
 import { add, commit, fetchCol, getOne, inc, nextSeq, patch, type Op } from './db';
-import type { AppUser, Caixa, Expense, Loss, Mode, Move, Order, OrderItem, Product, Status, StockLine, Why } from './types';
-import { ds, isSale, moveEffect, newId, orderTotal } from './utils';
+import type { AppUser, Caixa, Expense, Loss, Mode, Move, Order, OrderItem, PayPart, Product, Round, Status, StockLine, Why } from './types';
+import { ds, isSale, moveEffect, newId, orderTotal, payParts } from './utils';
 
-export interface DraftItem { key: string; pid: string; qty: number; rem: string[]; obs: string; mode: Mode | '' }
+export interface DraftItem { key: string; pid: string; qty: number; rem: string[]; obs: string; mode: Mode | ''; r?: number; q0?: number }
 export interface Draft { editing?: string; num?: number; client: string; phone: string; note: string; mode: Mode; items: DraftItem[] }
 
-function toItems(d: Draft, products: Product[]): OrderItem[] {
-  return d.items.map(i => {
-    const p = products.find(x => x.id === i.pid);
-    return {
-      pid: i.pid, name: p?.name || '?', price: p?.price || 0, cost: p?.cost || 0, qty: i.qty,
-      rem: i.rem, obs: i.obs.trim(), mode: (i.mode || d.mode) as Mode, removable: !!p?.ingr.some(x => x.r)
-    };
-  });
+const ORDER: Status[] = ['aguardando', 'producao', 'pronto', 'entregue'];
+/** Envios do pedido (pedidos antigos: um envio só, com o status do pedido). */
+export const roundsOf = (o: Pick<Order, 'rounds' | 'at' | 'status'>): Round[] => o.rounds || [{ n: 1, at: o.at, status: o.status === 'cancelado' ? 'aguardando' : o.status }];
+/** O item vai para a cozinha? (itens antigos: pela categoria do produto) */
+export const isKitchen = (i: OrderItem, products: Product[], kitchenCats: string[]) =>
+  i.k ?? kitchenCats.includes(products.find(p => p.id === i.pid)?.cat || '');
+/** Status geral do pedido = o envio mais atrasado; sem nada pendente na cozinha = entregue. */
+export function deriveStatus(rounds: Round[]): Status {
+  const pend = rounds.filter(r => r.status !== 'entregue');
+  if (!pend.length) return 'entregue';
+  return ORDER[Math.min(...pend.map(r => ORDER.indexOf(r.status)))];
 }
 
-export async function createOrder(d: Draft, caixa: Caixa, products: Product[], user: AppUser) {
+function itemOf(i: DraftItem, d: Draft, p: Product | undefined, kitchenCats: string[]): OrderItem {
+  return {
+    pid: i.pid, name: p?.name || '?', price: p?.price || 0, cost: p?.cost || 0, qty: i.qty,
+    rem: i.rem, obs: i.obs.trim(), mode: (i.mode || d.mode) as Mode, removable: !!p?.ingr.some(x => x.r),
+    k: kitchenCats.includes(p?.cat || '')
+  };
+}
+
+export async function createOrder(d: Draft, caixa: Caixa, products: Product[], user: AppUser, kitchenCats: string[]) {
   const num = await nextSeq(caixa.id);
   const now = Date.now();
+  const items = d.items.map(i => itemOf(i, d, products.find(x => x.id === i.pid), kitchenCats)).map(i => (i.k ? { ...i, r: 1 } : i));
+  const rounds: Round[] = items.some(i => i.k) ? [{ n: 1, at: now, status: 'aguardando' }] : [];
   await add('orders', {
     cx: caixa.id, num, day: ds(), at: now, client: d.client.trim(), phone: d.phone.trim(), note: d.note.trim(),
-    mode: d.mode, items: toItems(d, products), status: 'aguardando', paid: false, by: user.name
+    mode: d.mode, items, rounds, status: deriveStatus(rounds), paid: false, by: user.name
   });
-  return num;
+  return { num, kitchen: rounds.length > 0 };
 }
 
-export async function updateOrder(id: string, d: Draft, products: Product[]) {
-  await patch('orders', id, {
+/** Atualiza um pedido antes do pagamento. Comida nova vai para a cozinha: junta ao envio que ainda não começou ou abre um novo envio. */
+export async function updateOrder(o: Order, d: Draft, products: Product[], kitchenCats: string[]) {
+  const old = roundsOf(o);
+  const waiting = [...old].reverse().find(r => r.status === 'aguardando');
+  const target = waiting ? waiting.n : Math.max(0, ...old.map(r => r.n)) + 1;
+  let usedTarget = false;
+  const items: OrderItem[] = [];
+  for (const di of d.items) {
+    const it = itemOf(di, d, products.find(x => x.id === di.pid), kitchenCats);
+    if (!it.k) { items.push(it); continue; }
+    const st = old.find(r => r.n === di.r)?.status;
+    if (di.r && st && st !== 'aguardando' && di.q0 !== undefined && di.qty > di.q0) {
+      // quantidade aumentou num envio que já começou: o acréscimo vai num envio novo
+      items.push({ ...it, qty: di.q0, r: di.r });
+      items.push({ ...it, qty: di.qty - di.q0, r: target }); usedTarget = true;
+    } else if (di.r && st) items.push({ ...it, r: di.r });
+    else { items.push({ ...it, r: target }); usedTarget = true; }
+  }
+  let rounds = old.filter(r => items.some(i => i.k && i.r === r.n));
+  if (usedTarget && !rounds.some(r => r.n === target)) rounds = [...rounds, { n: target, at: Date.now(), status: 'aguardando' }];
+  await patch('orders', o.id, {
     client: d.client.trim(), phone: d.phone.trim(), note: d.note.trim(), mode: d.mode,
-    items: toItems(d, products), updatedAt: Date.now()
+    items, rounds, status: deriveStatus(rounds), updatedAt: Date.now()
   });
+  return { newRound: usedTarget && !waiting };
+}
+
+/** Avança um envio na fila da cozinha. */
+export async function setRoundStatus(o: Order, n: number, s: Status) {
+  const rounds = roundsOf(o).map(r => (r.n === n ? { ...r, status: s } : r));
+  await patch('orders', o.id, { rounds, status: deriveStatus(rounds), updatedAt: Date.now() });
 }
 
 export const setStatus = (o: Order, s: Status) => patch('orders', o.id, { status: s, updatedAt: Date.now() });
@@ -66,14 +105,22 @@ function lineOps(lines: StockLine[], sign: 1 | -1, motivo: string, obs: string, 
   return ops;
 }
 
-export async function payOrder(o: Order, m: string, recv: number, user: AppUser, products: Product[]) {
+/** Pagamento: uma forma só, ou várias partes (pagamento misto / conta dividida). */
+export async function payOrder(o: Order, m: string, recv: number, user: AppUser, products: Product[], split?: { kind: 'misto' | 'dividido'; parts: PayPart[] }) {
   const t = orderTotal(o);
-  const pay = { m, recv: m === 'Dinheiro' ? recv : t, change: m === 'Dinheiro' ? Math.max(0, recv - t) : 0, at: Date.now(), by: user.name };
+  let pay: Record<string, unknown> = { m, recv: m === 'Dinheiro' ? recv : t, change: m === 'Dinheiro' ? Math.max(0, recv - t) : 0, at: Date.now(), by: user.name };
+  if (split) {
+    const parts = split.parts.map(p => ({ ...p, value: Math.round(p.value * 100) / 100, recv: p.m === 'Dinheiro' ? Math.max(p.recv ?? p.value, p.value) : p.value,
+      change: p.m === 'Dinheiro' ? Math.max(0, Math.round(((p.recv ?? p.value) - p.value) * 100) / 100) : 0 }));
+    const ms = [...new Set(parts.map(p => p.m))];
+    pay = { m: split.kind === 'dividido' ? (ms.length === 1 ? `${ms[0]} (dividido)` : 'Dividido') : 'Misto', kind: split.kind, parts,
+      recv: parts.reduce((s, p) => s + (p.recv || 0), 0), change: parts.reduce((s, p) => s + (p.change || 0), 0), at: Date.now(), by: user.name };
+  }
   const moveIds: string[] = [];
   const stockOut = expand(o.items, products);
   const st = lineOps(stockOut, -1, 'Venda', `Pedido nº ${o.num}`, user, products, moveIds);
   await commit([{ op: 'update', path: 'orders', id: o.id, data: { paid: true, pay, moveIds, stockOut, updatedAt: Date.now() } }, ...st]);
-  return pay;
+  return pay as { m: string; change: number };
 }
 
 /** Cancela o pedido. Se já estava pago, estorna o pagamento e devolve os itens ao estoque. */
@@ -91,7 +138,8 @@ export function caixaStats(caixa: Caixa, orders: Order[]) {
   const by: Record<string, number> = {};
   let sold = 0, recv = 0, change = 0;
   for (const o of sales) {
-    const t = orderTotal(o); sold += t; by[o.pay!.m] = (by[o.pay!.m] || 0) + t;
+    sold += orderTotal(o);
+    for (const p of payParts(o)) by[p.m] = (by[p.m] || 0) + p.value;
     recv += o.pay!.recv; change += o.pay!.change;
   }
   return { sales, by, sold, recv, change, cash: caixa.initial + (by['Dinheiro'] || 0) };
@@ -180,7 +228,7 @@ export async function editSale(o: Order, e: SaleEdit, user: AppUser, products: P
     client: e.client.trim(), phone: e.phone.trim(), note: e.note.trim(), mode: e.mode, items: e.items,
     moveIds, updatedAt: Date.now(), editedBy: user.name, ...(stockOut ? { stockOut } : {})
   };
-  if (o.paid && o.pay) {
+  if (o.paid && o.pay && !o.pay.parts?.length) {
     const t = e.items.reduce((s, i) => s + i.qty * i.price, 0);
     const m = e.payM || o.pay.m;
     const recv = m === 'Dinheiro' ? Math.max(e.recv ?? o.pay.recv, t) : t;

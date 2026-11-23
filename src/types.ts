@@ -25,8 +25,13 @@ export interface StockLine { pid: string; qty: number }
 export interface OrderItem {
   pid: string; name: string; price: number; cost: number; qty: number;
   rem: string[]; obs: string; mode: Mode; removable?: boolean;
+  k?: boolean;  // vai para a cozinha (categoria de produção)
+  r?: number;   // envio (rodada) para a cozinha a que o item pertence
 }
-export interface Payment { m: string; recv: number; change: number; at: number; by: string; refunded?: boolean }
+/** Cada envio de itens de cozinha de um pedido tem seu próprio andamento na fila. */
+export interface Round { n: number; at: number; status: Status }
+export interface PayPart { m: string; value: number; recv?: number; change?: number; who?: string }
+export interface Payment { m: string; recv: number; change: number; at: number; by: string; refunded?: boolean; parts?: PayPart[]; kind?: 'misto' | 'dividido' }
 export interface Order {
   id: string; cx: string; num: number; day: string; at: number;
   client: string; phone: string; note: string; mode: Mode;
@@ -34,6 +39,7 @@ export interface Order {
   cancel?: { at: number; by: string; reason: string };
   by: string; updatedAt?: number; moveIds?: string[];
   stockOut?: StockLine[]; // o que saiu do estoque no pagamento (produto + composição)
+  rounds?: Round[];       // envios para a cozinha
 }
 export interface Caixa {
   id: string; at: number; initial: number; by: string; open: boolean; seq: number;
@@ -56,7 +62,8 @@ export interface Config {
   cardFee: number; // % estimada das maquininhas (crédito, débito, vale)
   off: string[];
   delReasons: string[]; // motivos de exclusão
-  wa: { auto: boolean; on: string[] }; // WhatsApp: abrir sozinho ao mudar para estes status   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
+  wa: { auto: boolean; on: string[] };
+  kitchenCats: string[]; // categorias que vão para a fila da cozinha (ex.: COM) // WhatsApp: abrir sozinho ao mudar para estes status   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
 }
 
 export interface Why { reason: string; note: string }

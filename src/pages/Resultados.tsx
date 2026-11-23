@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useApp } from '../store';
 import { useCol } from '../db';
 import type { Expense, Loss, Order } from '../types';
-import { addDays, brl, daysBetween, dbr, ds, exportXlsx, isSale, nf, nm, orderCost, orderTotal, pct, type Sheet } from '../utils';
+import { addDays, brl, daysBetween, dbr, ds, exportXlsx, isSale, nf, nm, orderCost, orderTotal, payParts, pct, type Sheet } from '../utils';
 import { HBars } from '../components/ui';
 
 type Per = 'dia' | 'semana' | 'mes' | 'periodo';
@@ -17,7 +17,7 @@ function stats(os: Order[], fee: number) {
   const rev = os.reduce((s, o) => s + orderTotal(o), 0);
   const cost = os.reduce((s, o) => s + orderCost(o), 0);
   const items = os.reduce((s, o) => s + o.items.reduce((a, i) => a + i.qty, 0), 0);
-  const card = os.filter(o => o.pay && o.pay.m !== 'Dinheiro' && o.pay.m !== 'PIX').reduce((s, o) => s + orderTotal(o), 0);
+  const card = os.flatMap(payParts).filter(p => p.m !== 'Dinheiro' && p.m !== 'PIX').reduce((s, p) => s + p.value, 0);
   const tickets = os.map(orderTotal);
   return { rev, cost, items, n: os.length, tm: os.length ? rev / os.length : 0, fees: (card * fee) / 100, max: Math.max(0, ...tickets), min: tickets.length ? Math.min(...tickets) : 0 };
 }
@@ -80,7 +80,7 @@ export default function Resultados() {
   // rankings
   const prodQ: Record<string, number> = {}, clsCost: Record<string, number> = {}, catCost: Record<string, number> = {}, byPay: Record<string, number> = {};
   for (const o of cur) {
-    byPay[o.pay!.m] = (byPay[o.pay!.m] || 0) + orderTotal(o);
+    for (const pp of payParts(o)) byPay[pp.m] = (byPay[pp.m] || 0) + pp.value;
     for (const i of o.items) {
       prodQ[i.name] = (prodQ[i.name] || 0) + i.qty;
       const p = products.find(x => x.id === i.pid);

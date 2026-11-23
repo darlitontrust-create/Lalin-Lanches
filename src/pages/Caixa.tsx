@@ -5,7 +5,7 @@ import { useCol } from '../db';
 import { caixaStats, deleteCaixa, deleteOrder, editSale, recalcClosing } from '../ops';
 import { DeleteReasonModal, ReasonFields } from '../components/DeleteModal';
 import type { Caixa, Mode, Order, OrderItem, Why } from '../types';
-import { ML, STATUS, brl, ds, dt, exportXlsx, hm, isOn, isSale, num, orderTotal, sellable } from '../utils';
+import { ML, STATUS, brl, ds, dt, exportXlsx, hm, isOn, isSale, num, orderTotal, payLabel, sellable } from '../utils';
 import { Empty, HBars, ModalHead } from '../components/ui';
 import { CaixaOpen, CloseCaixaModal } from './shared';
 
@@ -70,7 +70,7 @@ function VendasDoDia() {
   const del = (o: Order) => ui.modal(<OrderDeleteModal o={o} />);
   const exp = () => exportXlsx('pedidos-' + day, {
     Pedidos: [['Nº', 'Hora', 'Cliente', 'Itens', 'Consumo', 'Status', 'Pago', 'Forma', 'Total', 'Lançado por'],
-      ...list.map(o => [o.num, hm(o.at), o.client, o.items.map(i => `${i.qty}x ${i.name}`).join(', '), ML[o.mode], STATUS[o.status].n, o.paid ? (o.pay?.refunded ? 'Estornado' : 'Sim') : 'Não', o.pay?.m || '', orderTotal(o), o.by])]
+      ...list.map(o => [o.num, hm(o.at), o.client, o.items.map(i => `${i.qty}x ${i.name}`).join(', '), ML[o.mode], STATUS[o.status].n, o.paid ? (o.pay?.refunded ? 'Estornado' : 'Sim') : 'Não', payLabel(o), orderTotal(o), o.by])]
   });
   return <div className="card mt">
     <div className="row sb"><h2 style={{ margin: 0 }}>Vendas do dia</h2>
@@ -79,7 +79,7 @@ function VendasDoDia() {
     <p className="mute">{list.length} pedido(s) · vendido {brl(sold)}{admin ? ' · o administrador pode editar ou excluir lançamentos feitos por engano' : ''}</p>
     {rows === null ? <p className="mute">Carregando…</p> : list.length ? <div className="scroll"><table className="stack"><thead><tr><th>Nº</th><th>Hora</th><th>Cliente</th><th>Itens</th><th>Status</th><th>Pagamento</th><th className="n">Total</th><th>Por</th>{admin && <th></th>}</tr></thead>
       <tbody>{list.map(o => <tr key={o.id}><td>{o.num}</td><td>{hm(o.at)}</td><td>{o.client}</td><td>{o.items.map(i => `${i.qty}× ${i.name}`).join(', ')}</td>
-        <td>{STATUS[o.status].n}</td><td>{o.paid ? (o.pay?.refunded ? 'Estornado' : o.pay?.m) : 'Não pago'}</td><td className="n">{brl(orderTotal(o))}</td><td>{o.by}</td>
+        <td>{STATUS[o.status].n}</td><td>{o.paid ? (o.pay?.refunded ? 'Estornado' : payLabel(o)) : 'Não pago'}</td><td className="n">{brl(orderTotal(o))}</td><td>{o.by}</td>
         {admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" disabled={o.status === 'cancelado'} onClick={() => ui.modal(<OrderEditModal o={o} />)}>Editar</button><button className="btn sm danger" onClick={() => del(o)}>Excluir</button></div></td>}</tr>)}</tbody></table></div>
       : <Empty>Nenhum pedido neste dia.</Empty>}
   </div>;
@@ -153,7 +153,8 @@ function OrderEditModal({ o, back }: { o: Order; back?: () => void }) {
       <select value={addPid} onChange={e => setAddPid(e.target.value)} aria-label="Adicionar produto"><option value="">Adicionar produto…</option>{products.filter(sellable).map(p => <option key={p.id} value={p.id}>{p.name} — {brl(p.price)}</option>)}</select>
       <button className="btn" disabled={!addPid} onClick={addItem}>Adicionar</button></div>
     <div className="tot"><span className="mute">Novo total {t !== orderTotal(o) && <>(antes {brl(orderTotal(o))})</>}</span><b>{brl(t)}</b></div>
-    {o.paid && <div className="fg">
+    {o.paid && o.pay?.parts?.length ? <p className="mute">Pagamento em partes: {payLabel(o)}. Para mudar, exclua e lance o pedido de novo.</p> : null}
+    {o.paid && !o.pay?.parts?.length && <div className="fg">
       <label>Forma de pagamento<select value={payM} onChange={e => setPayM(e.target.value)}>{pays.map(x => <option key={x}>{x}</option>)}</select></label>
       {payM === 'Dinheiro' && <label>Valor recebido<input type="number" inputMode="decimal" step="0.01" value={recv} onChange={e => setRecv(e.target.value)} /></label>}
       {payM === 'Dinheiro' && <label>Troco<input readOnly value={brl(Math.max(0, num(recv) - t))} /></label>}
@@ -175,7 +176,7 @@ function CaixaOrdersModal({ c }: { c: Caixa }) {
     <ModalHead title={`Pedidos do caixa de ${dt(c.at)}`} onClose={() => ui.modal(null)} />
     <p className="mute" style={{ marginTop: 0 }}>{c.open ? 'Caixa aberto.' : `Fechado em ${c.closedAt ? dt(c.closedAt) : '—'}.`} Ao editar ou excluir, os totais do fechamento são recalculados.</p>
     {rows === null ? <p className="mute">Carregando…</p> : list.length ? list.map(o => <div key={o.id} className="li">
-      <div className="row sb"><b>nº {o.num} · {o.client}</b><span><b>{brl(orderTotal(o))}</b> <span className="mute">· {o.paid ? (o.pay?.refunded ? 'estornado' : o.pay?.m) : 'não pago'} · {STATUS[o.status].n}</span></span></div>
+      <div className="row sb"><b>nº {o.num} · {o.client}</b><span><b>{brl(orderTotal(o))}</b> <span className="mute">· {o.paid ? (o.pay?.refunded ? 'estornado' : payLabel(o)) : 'não pago'} · {STATUS[o.status].n}</span></span></div>
       <div className="mute">{o.items.map(i => `${i.qty}× ${i.name}`).join(', ')}</div>
       <div className="row" style={{ marginTop: 6, gap: 6 }}>
         <button className="btn sm" disabled={o.status === 'cancelado'} onClick={() => ui.modal(<OrderEditModal o={o} back={back} />)}>Editar / excluir itens</button>
