@@ -141,6 +141,13 @@ function Main({ profile, ui, layer }: { profile: AppUser; ui: UI; layer: ReactNo
   const open = useCol<Caixa>('caixas', { where: [['open', '==', true]] });
   const [view, setView] = useState<View>(() => (location.hash.slice(1) as View) || 'pedidos');
   const [dark, setDark] = useState(isDark);
+  const [palette, setPalette] = useState(() => document.documentElement.dataset.palette || 'marinho');
+  const togglePalette = () => {
+    const pl = palette === 'marinho' ? 'classica' : 'marinho';
+    document.documentElement.dataset.palette = pl;
+    try { localStorage.setItem('lalin-palette', pl); } catch { /* ignore */ }
+    setPalette(pl);
+  };
 
   useEffect(() => {
     const f = () => { const h = location.hash.slice(1) as View; if (PAGES[h]) setView(h); ui.modal(null); };
@@ -181,6 +188,9 @@ function Main({ profile, ui, layer }: { profile: AppUser; ui: UI; layer: ReactNo
           <div className="top">
             <h1>{cur[1]}</h1>
             <span className={'pill' + (caixa ? '' : ' off')}><i />{caixa ? 'Caixa aberto desde ' + hm(caixa.at) : 'Caixa fechado'}</span>
+            <button className="btn ic" onClick={togglePalette} aria-label="Trocar paleta de cores" title={'Paleta: ' + (palette === 'marinho' ? 'Marinho' : 'Clássica') + ' (toque para trocar)'}>
+              <Icon d="M12 3a9 9 0 100 18c1 0 1.5-.8 1.5-1.6 0-.9-.6-1.4-.6-2.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 005-5c0-4.1-4-7.6-9-7.6zM7.5 12a1 1 0 110-2 1 1 0 010 2zM9.5 8a1 1 0 110-2 1 1 0 010 2zM14.5 8a1 1 0 110-2 1 1 0 010 2z" />
+            </button>
             <button className="btn ic" onClick={toggleTheme} aria-label="Alternar modo claro/escuro" title="Modo claro/escuro">
               <Icon d={dark ? 'M12 3v2M12 19v2M5 5l1.5 1.5M17.5 17.5 19 19M3 12h2M19 12h2M5 19l1.5-1.5M17.5 6.5 19 5M12 8a4 4 0 100 8 4 4 0 000-8z' : 'M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z'} />
             </button>

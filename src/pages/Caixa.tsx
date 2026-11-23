@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { patch } from '../db';
 import { useApp } from '../store';
 import { useCol } from '../db';
-import { caixaStats, deleteOrder, editSale, recalcClosing } from '../ops';
+import { caixaStats, deleteCaixa, deleteOrder, editSale, recalcClosing } from '../ops';
 import { DeleteReasonModal, ReasonFields } from '../components/DeleteModal';
 import type { Caixa, Mode, Order, OrderItem, Why } from '../types';
 import { ML, STATUS, brl, ds, dt, exportXlsx, hm, isOn, isSale, num, orderTotal, sellable } from '../utils';
@@ -52,7 +52,7 @@ export default function CaixaPage() {
       {!histOpen ? null : closed.length ? <div style={{ marginTop: 10 }}><div className="scroll"><table className="stack"><thead><tr><th>Abertura</th><th>Fechamento</th><th>Responsável</th><th className="n">Vendas</th><th className="n">Vendido</th><th className="n">Esperado em dinheiro</th><th className="n">Contado</th><th className="n">Diferença</th>{admin && <th></th>}</tr></thead>
         <tbody>{closed.slice(0, show).map(c => <tr key={c.id}><td>{dt(c.at)}</td><td>{c.closedAt ? dt(c.closedAt) : ''}</td><td>{c.closedBy || c.by}</td><td className="n">{c.orders || 0}</td>
           <td className="n">{brl(c.sold || 0)}</td><td className="n">{brl(c.expected || 0)}</td><td className="n">{brl(c.counted || 0)}</td>
-          <td className="n" style={{ color: (c.diff || 0) < 0 ? 'var(--red)' : 'var(--ok)' }}>{brl(c.diff || 0)}</td>{admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<CaixaOrdersModal c={c} />)}>Pedidos</button><button className="btn sm" onClick={() => ui.modal(<ClosingEditModal c={c} />)}>Contado</button></div></td>}</tr>)}</tbody></table>
+          <td className="n" style={{ color: (c.diff || 0) < 0 ? 'var(--red)' : 'var(--ok)' }}>{brl(c.diff || 0)}</td>{admin && <td><div className="row" style={{ flexWrap: 'nowrap', gap: 6 }}><button className="btn sm" onClick={() => ui.modal(<CaixaOrdersModal c={c} />)}>Pedidos</button><button className="btn sm" onClick={() => ui.modal(<ClosingEditModal c={c} />)}>Contado</button><button className="btn sm danger" onClick={() => ui.modal(<CaixaDeleteModal c={c} />)}>Excluir</button></div></td>}</tr>)}</tbody></table>
         {closed.length > show && <button className="btn sm" onClick={() => setShow(show + 15)}>Ver mais</button>}</div></div>
         : <Empty>Nenhum fechamento registrado ainda.</Empty>}
     </div>
@@ -201,5 +201,25 @@ function ClosingEditModal({ c }: { c: Caixa }) {
     <label style={{ marginTop: 10 }}>Dinheiro contado<input type="number" inputMode="decimal" step="0.01" value={cont} onChange={e => setCont(e.target.value)} /></label>
     <div className={'troco' + (diff < 0 ? ' neg' : '')}><span>{diff < 0 ? 'Falta' : diff > 0 ? 'Sobra' : 'Confere'}</span><b>{brl(diff)}</b></div>
     <div className="row end"><button className="btn" onClick={close}>Cancelar</button><button className="btn p" onClick={save}>Salvar</button></div>
+  </>;
+}
+
+/** Exclusão de um fechamento de caixa: só o registro, ou o registro com todos os pedidos dele. */
+function CaixaDeleteModal({ c }: { c: Caixa }) {
+  const { cfg, ui, user, products } = useApp();
+  const [withOrders, setWith] = useState(false);
+  const close = () => ui.modal(null);
+  return <>
+    <ModalHead title="Excluir fechamento de caixa?" onClose={close} />
+    <p style={{ marginTop: 0 }}>Caixa aberto em <b>{dt(c.at)}</b> por {c.by} · {c.orders || 0} venda(s) · vendido <b>{brl(c.sold || 0)}</b></p>
+    <div className="chips" style={{ marginBottom: 8 }}>
+      <button className={'chip' + (!withOrders ? ' on' : '')} onClick={() => setWith(false)}>Só o registro do fechamento</button>
+      <button className={'chip' + (withOrders ? ' on' : '')} onClick={() => setWith(true)}>Fechamento + todos os pedidos dele</button>
+    </div>
+    <p className="mute" style={{ marginTop: 0 }}>{withOrders
+      ? 'Os pedidos desse caixa também são excluídos: saem das vendas e dos resultados, e o estoque das vendas volta. Cada pedido aparece no Log de exclusões.'
+      : 'Some apenas a linha do histórico de fechamentos. Os pedidos e vendas continuam em Vendas do dia e nos Resultados.'}</p>
+    <ReasonFields reasons={cfg.delReasons.filter(x => isOn(cfg, 'delReasons', x))} ok="Excluir fechamento" onBack={close}
+      onConfirm={async why => { await deleteCaixa(c, withOrders, user, products, why); ui.toast('Fechamento excluído'); close(); }} />
   </>;
 }

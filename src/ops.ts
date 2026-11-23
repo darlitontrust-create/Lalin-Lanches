@@ -235,3 +235,12 @@ export async function recalcClosing(cxId?: string) {
   const s = caixaStats(c, orders);
   await patch('caixas', cxId, { sold: s.sold, byMethod: s.by, orders: s.sales.length, expected: s.cash, diff: (c.counted || 0) - s.cash });
 }
+
+/** Exclui um fechamento de caixa. Opcionalmente exclui também todos os pedidos dele (devolvendo o estoque das vendas). */
+export async function deleteCaixa(c: Caixa, withOrders: boolean, user: AppUser, products: Product[], why: Why) {
+  const orders = await fetchCol<Order>('orders', { where: [['cx', '==', c.id]] });
+  if (withOrders) for (const o of orders) await deleteOrder(o, user, products, why);
+  await commit([{ op: 'delete', path: 'caixas', id: c.id },
+    logOp('Fechamento de caixa', `Caixa aberto em ${new Date(c.at).toLocaleString('pt-BR')} · ${c.orders || 0} venda(s)${withOrders ? ` · ${orders.length} pedido(s) excluído(s) junto` : ' · pedidos mantidos'}`,
+      c.sold || 0, why, user, c.id, ds(new Date(c.at)), c)]);
+}

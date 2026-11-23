@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 export const Logo = ({ size = 44 }: { size?: number }) => (
   <svg className="logo" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
     <defs>
-      <linearGradient id="lgb" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stopColor="#E63946" /><stop offset="1" stopColor="#FF8A3D" /></linearGradient>
+      <linearGradient id="lgb" x1="0" y1="1" x2="1" y2="0"><stop offset="0" style={{ stopColor: 'var(--logo1, #E63946)' }} /><stop offset="1" style={{ stopColor: 'var(--logo2, #FF8A3D)' }} /></linearGradient>
       <linearGradient id="lgg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".35" /><stop offset=".55" stopColor="#fff" stopOpacity="0" /></linearGradient>
     </defs>
     <rect width="64" height="64" rx="18" fill="url(#lgb)" /><rect width="64" height="64" rx="18" fill="url(#lgg)" />
