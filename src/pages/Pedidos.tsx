@@ -77,6 +77,8 @@ function applyChange(d: Draft, i: number, ch: Change, all: boolean): Draft {
 function NovoPedido({ draft: d, setDraft, onSaved, onCancelEdit }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void; onSaved: () => void; onCancelEdit: () => void }) {
   const { products, cfg, caixa, user, ui } = useApp();
   const [q, setQ] = useState('');
+  const [fcat, setFcat] = useState('');
+  const [fcls, setFcls] = useState('');
   const [busy, setBusy] = useState(false);
   const asking = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -135,7 +137,10 @@ function NovoPedido({ draft: d, setDraft, onSaved, onCancelEdit }: { draft: Draf
     setBusy(false);
   };
 
-  const groups = cfg.classes.map(c => ({ c, it: products.filter(p => sellable(p) && p.cls === c.c && (!q || p.name.toLowerCase().includes(q.toLowerCase()))) })).filter(g => g.it.length);
+  const forSale = products.filter(sellable);
+  const catsOn = cfg.cats.filter(c => forSale.some(p => p.cat === c.c));
+  const clsOn = cfg.classes.filter(c => forSale.some(p => p.cls === c.c && (!fcat || p.cat === fcat)));
+  const groups = cfg.classes.map(c => ({ c, it: forSale.filter(p => p.cls === c.c && (!fcat || p.cat === fcat) && (!fcls || p.cls === fcls) && (!q || p.name.toLowerCase().includes(q.toLowerCase()))) })).filter(g => g.it.length);
   const NOTES = ['Mesa próxima da TV', 'Camisa azul', 'Motoqueiro', 'Retirada'];
 
   return <>
@@ -157,6 +162,13 @@ function NovoPedido({ draft: d, setDraft, onSaved, onCancelEdit }: { draft: Draf
       <div className="card">
         <h2>2. Itens</h2>
         {!d.client.trim() && <p className="mute" style={{ margin: '-4px 0 10px' }}>Preencha o nome do cliente antes de adicionar itens.</p>}
+        <div className="chips scrollx" role="group" aria-label="Filtrar por categoria" style={{ marginBottom: 8 }}>
+          <button className={'chip' + (!fcat ? ' on' : '')} onClick={() => { setFcat(''); setFcls(''); }}>Todas</button>
+          {catsOn.map(c => <button key={c.c} className={'chip' + (fcat === c.c ? ' on' : '')} onClick={() => { setFcat(fcat === c.c ? '' : c.c); setFcls(''); }}>{c.n}</button>)}
+        </div>
+        {clsOn.length > 1 && <div className="chips scrollx" role="group" aria-label="Filtrar por classe" style={{ marginBottom: 10 }}>
+          {clsOn.map(c => <button key={c.c} className={'chip y' + (fcls === c.c ? ' on' : '')} onClick={() => setFcls(fcls === c.c ? '' : c.c)}>{c.n}</button>)}
+        </div>}
         <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Buscar produto…" aria-label="Buscar produto" />
         {groups.length ? groups.map(g => <div key={g.c.c}>
           <h3>{g.c.n}</h3>

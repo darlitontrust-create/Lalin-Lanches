@@ -1,8 +1,8 @@
 // Service worker do Lalin Lanches: permite instalar como app e abrir mesmo com internet instável.
 // Os dados (pedidos, estoque...) ficam no Firestore, que tem cache próprio; aqui só guardamos os arquivos do site.
-const CACHE = 'lalin-v3';
+const CACHE = 'lalin-v4';
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.webmanifest', './icon-v2-192.png', './icon-v2-512.png', './favicon.svg'])).catch(() => {}));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).catch(() => {}));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {
@@ -12,15 +12,14 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; // Firebase e Google passam direto
-  if (req.mode === 'navigate') {
-    // página: tenta a versão nova; sem internet, usa a guardada
-    e.respondWith(fetch(req).then(r => { const c = r.clone(); caches.open(CACHE).then(x => x.put('./index.html', c)); return r; })
-      .catch(() => caches.match('./index.html')));
+  // arquivos com nome versionado (assets/…-hash.js/css) nunca mudam: usa o guardado
+  if (url.pathname.includes('/assets/')) {
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(r => { if (r.ok) { const c = r.clone(); caches.open(CACHE).then(x => x.put(req, c)); } return r; })));
     return;
   }
-  // arquivos (js, css, ícones): usa o guardado e atualiza em segundo plano
-  e.respondWith(caches.match(req).then(hit => {
-    const net = fetch(req).then(r => { if (r.ok) { const c = r.clone(); caches.open(CACHE).then(x => x.put(req, c)); } return r; }).catch(() => hit);
-    return hit || net;
-  }));
+  // página, manifesto e ícones: sempre busca a versão nova; sem internet, usa a guardada
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then(r => {
+    if (r.ok) { const c = r.clone(); caches.open(CACHE).then(x => x.put(req.mode === 'navigate' ? './index.html' : req, c)); }
+    return r;
+  }).catch(() => caches.match(req.mode === 'navigate' ? './index.html' : req)));
 });
