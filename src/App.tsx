@@ -41,9 +41,11 @@ function useUI() {
   const [md, setMd] = useState<ReactNode | null>(null);
   const ui = useMemo<UI>(() => ({
     toast: m => {
+      if (/insufficient permissions|permission-denied/i.test(m)) m = 'Sem permissão no banco de dados. Publique as regras atualizadas do Firestore (arquivo firestore.rules) em Firebase › Firestore › Regras.';
+      const long = m.length > 80;
       const id = Date.now() + Math.random();
       setToasts(t => (t.some(x => x.m === m) ? t : [...t.slice(-2), { id, m }]));
-      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
+      setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), long ? 7000 : 3000);
     },
     modal: n => setMd(n),
     confirm: o => new Promise<boolean>(res => {
