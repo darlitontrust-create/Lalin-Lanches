@@ -63,7 +63,9 @@ export interface Config {
   off: string[];
   delReasons: string[]; // motivos de exclusão
   wa: { auto: boolean; on: string[] };
-  kitchenCats: string[]; // categorias que vão para a fila da cozinha (ex.: COM) // WhatsApp: abrir sozinho ao mudar para estes status   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
+  kitchenCats: string[]; // (legado) categorias da cozinha
+  kitchenCls: string[]; // classes que vão para a fila da cozinha (ex.: LAN, MAS); as demais ficam no balcão/comanda
+  // categorias que vão para a fila da cozinha (ex.: COM) // WhatsApp: abrir sozinho ao mudar para estes status   // itens de cadastro inativos, no formato 'lista:valor' (ex.: 'pays:Fiado')
 }
 
 export interface Why { reason: string; note: string }

@@ -11,7 +11,7 @@ const ORDER: Status[] = ['aguardando', 'producao', 'pronto', 'entregue'];
 export const roundsOf = (o: Pick<Order, 'rounds' | 'at' | 'status'>): Round[] => o.rounds || [{ n: 1, at: o.at, status: o.status === 'cancelado' ? 'aguardando' : o.status }];
 /** O item vai para a cozinha? (itens antigos: pela categoria do produto) */
 export const isKitchen = (i: OrderItem, products: Product[], kitchenCats: string[]) =>
-  i.k ?? kitchenCats.includes(products.find(p => p.id === i.pid)?.cat || '');
+  i.k ?? kitchenCats.includes(products.find(p => p.id === i.pid)?.cls || '');
 /** Status geral do pedido = o envio mais atrasado; sem nada pendente na cozinha = entregue. */
 export function deriveStatus(rounds: Round[]): Status {
   const pend = rounds.filter(r => r.status !== 'entregue');
@@ -23,7 +23,7 @@ function itemOf(i: DraftItem, d: Draft, p: Product | undefined, kitchenCats: str
   return {
     pid: i.pid, name: p?.name || '?', price: p?.price || 0, cost: p?.cost || 0, qty: i.qty,
     rem: i.rem, obs: i.obs.trim(), mode: (i.mode || d.mode) as Mode, removable: !!p?.ingr.some(x => x.r),
-    k: kitchenCats.includes(p?.cat || '')
+    k: kitchenCats.includes(p?.cls || '')
   };
 }
 

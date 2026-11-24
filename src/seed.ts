@@ -25,6 +25,7 @@ export const DEFAULT_CONFIG: Config = {
   off: [],
   wa: { auto: false, on: ['aguardando', 'pronto'] },
   kitchenCats: ['COM'],
+  kitchenCls: ['LAN', 'MAS'],
   delReasons: ['Lançamento duplicado', 'Lançamento errado', 'Valor ou quantidade errada', 'Lançamento de teste', 'Cliente desistiu', 'Outro']
 };
 

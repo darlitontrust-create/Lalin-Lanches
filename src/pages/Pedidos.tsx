@@ -9,6 +9,11 @@ import { ML, STATUS, brl, fillMsg, hm, isOn, isOpenOrder, num, orderTotal, payLa
 import { Empty, ModalHead } from '../components/ui';
 import { CaixaOpen, CancelModal, CloseCaixaModal } from './shared';
 
+const kitchenNames = (cfg: { classes: { c: string; n: string }[]; kitchenCls: string[] }) => {
+  const k = cfg.classes.filter(c => cfg.kitchenCls.includes(c.c)), o = cfg.classes.filter(c => !cfg.kitchenCls.includes(c.c));
+  const j = (a: { n: string }[]) => a.map(x => x.n.toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' e $1');
+  return { k: j(k) || 'nenhuma classe', o: j(o) || '' };
+};
 type Tab = 'novo' | 'cozinha' | 'comandas' | 'cobranca';
 const emptyDraft = (): Draft => ({ client: '', phone: '', note: '', mode: 'local', items: [] });
 let kseq = 0;
@@ -28,7 +33,7 @@ export default function Pedidos() {
   if (!caixa) return <CaixaOpen />;
   const list = (orders || []).slice().sort((a, b) => a.num - b.num);
   const valid = list.filter(o => o.status !== 'cancelado');
-  const inKitchen = valid.reduce((n, o) => n + roundsOf(o).filter(r => r.status !== 'entregue' && o.items.some(i => isKitchen(i, products, cfg.kitchenCats) && (i.r ?? 1) === r.n)).length, 0);
+  const inKitchen = valid.reduce((n, o) => n + roundsOf(o).filter(r => r.status !== 'entregue' && o.items.some(i => isKitchen(i, products, cfg.kitchenCls) && (i.r ?? 1) === r.n)).length, 0);
   const openTabs = valid.filter(isOpenOrder).length;
   const toCharge = valid.filter(o => !o.paid).length;
 
@@ -134,11 +139,11 @@ function NovoPedido({ draft: d, setDraft, orders, onSaved, onCancelEdit }: { dra
         const o = orders.find(x => x.id === d.editing);
         if (!o) throw new Error('pedido não encontrado');
         if (o.paid) throw new Error('este pedido já foi pago');
-        const r = await updateOrder(o, d, products, cfg.kitchenCats);
-        ui.toast(`Comanda nº ${d.num} atualizada` + (r.newRound ? ' · itens novos de comida enviados para a cozinha' : ''));
+        const r = await updateOrder(o, d, products, cfg.kitchenCls);
+        ui.toast(`Comanda nº ${d.num} atualizada` + (r.newRound ? ' · itens novos de cozinha enviados para a fila' : ''));
       } else {
-        const r = await createOrder(d, caixa!, products, user, cfg.kitchenCats);
-        ui.toast(`Pedido nº ${r.num} lançado` + (r.kitchen ? ' · comida enviada para a cozinha' : ' · só bebidas, sem fila de cozinha'));
+        const r = await createOrder(d, caixa!, products, user, cfg.kitchenCls);
+        ui.toast(`Pedido nº ${r.num} lançado` + (r.kitchen ? ' · itens de cozinha enviados para a fila' : ' · só itens de balcão, sem fila de cozinha'));
         if (w) w.location.href = waLink(d.phone, fillMsg(cfg.msgs.aguardando, { client: d.client.trim(), num: r.num, status: 'aguardando' }));
       }
       onSaved(!!d.editing);
@@ -153,7 +158,7 @@ function NovoPedido({ draft: d, setDraft, orders, onSaved, onCancelEdit }: { dra
   const NOTES = ['Mesa próxima da TV', 'Camisa azul', 'Motoqueiro', 'Retirada'];
 
   return <>
-    {d.editing && <div className="banner row sb"><span>Editando a comanda <b>nº {d.num}</b>: adicione ou altere itens. Comida nova vai para a cozinha; bebida entra só na comanda.</span><button className="btn sm" onClick={onCancelEdit}>Cancelar edição</button></div>}
+    {d.editing && <div className="banner row sb"><span>Editando a comanda <b>nº {d.num}</b>: adicione ou altere itens. Itens novos de {kitchenNames(cfg).k} vão para a cozinha; os demais itens são do balcão e entram só na comanda.</span><button className="btn sm" onClick={onCancelEdit}>Cancelar edição</button></div>}
     <div className="card">
       <h2>1. Cliente</h2>
       <div className="fg">
@@ -236,7 +241,7 @@ function Cozinha({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: Or
   for (const o of orders) {
     const rs = roundsOf(o);
     for (const r of rs) {
-      const items = o.items.filter(i => isKitchen(i, products, cfg.kitchenCats) && (i.r ?? 1) === r.n);
+      const items = o.items.filter(i => isKitchen(i, products, cfg.kitchenCls) && (i.r ?? 1) === r.n);
       if (items.length) tickets.push({ o, r, items, status: o.status === 'cancelado' ? 'cancelado' : r.status, multi: rs.length > 1 });
     }
   }
@@ -255,7 +260,7 @@ function Cozinha({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: Or
     const o = t.o;
     const min = Math.round((Date.now() - t.r.at) / 6e4);
     const st = STATUS[t.r.status];
-    const drinks = o.items.filter(i => !isKitchen(i, products, cfg.kitchenCats)).reduce((n, i) => n + i.qty, 0);
+    const drinks = o.items.filter(i => !isKitchen(i, products, cfg.kitchenCls)).reduce((n, i) => n + i.qty, 0);
     return (
       <article className="tk">
         <div className="row sb"><span className="n">nº {o.num}{t.multi && <span className="mute" style={{ fontSize: 13, fontFamily: 'Inter' }}> · {roundLabel(t.r.n)}</span>}</span><span className="mute">{hm(t.r.at)} · {min} min</span></div>
@@ -265,7 +270,7 @@ function Cozinha({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: Or
         <ul>{t.items.map((i, k) => <li key={k}><b>{i.qty}×</b> {i.name}{i.mode !== o.mode && <> <span className="bd v">{ML[i.mode]}</span></>}
           {i.rem.length ? <><br /><span className="rm">Sem {i.rem.map(x => x.toLowerCase()).join(', sem ')}</span></> : i.removable ? <><br /><span className="okc">Completo</span></> : null}
           {i.obs && <><br /><span className="mute">{i.obs}</span></>}</li>)}</ul>
-        {drinks > 0 && <p className="mute" style={{ margin: '0 0 6px' }}>+ {drinks} bebida(s) na comanda</p>}
+        {drinks > 0 && <p className="mute" style={{ margin: '0 0 6px' }}>+ {drinks} item(ns) de balcão na comanda</p>}
         {o.cancel && <p className="mute">Motivo: {o.cancel.reason} · {o.cancel.by}</p>}
         {o.status !== 'cancelado' && <>
           <div className="row sb">{!o.paid ? <button className="btn sm" onClick={() => onCharge(o.id)}>Cobrar</button> : <span />}
@@ -283,7 +288,7 @@ function Cozinha({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: Or
       {filters.map(([k, n, c]) => <button key={k} className={'chip' + (c ? ' st' : '') + (fs === k ? ' on' : '')} style={{ '--c': c } as CSSProperties} onClick={() => setFs(k)}>
         {n} ({k === 'todos' ? tickets.filter(t => t.status !== 'cancelado').length : cnt(k as Status)})</button>)}
     </div>
-    <p className="mute" style={{ marginTop: 0 }}>Fila de produção: só os itens de comida. As bebidas ficam em Comandas.</p>
+    <p className="mute" style={{ marginTop: 0 }}>Fila da cozinha: só {kitchenNames(cfg).k} (ajuste em Cadastro › Tipos, categorias e classes). Os demais itens são servidos no balcão e ficam em Comandas.</p>
     <div className={'kb' + (all ? '' : ' one')}>
       {(all ? cols : [fs as Status]).map(s => {
         let l = tickets.filter(t => t.status === s);
@@ -316,7 +321,7 @@ function Comandas({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: O
     </div>
     {list.length ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 12 }}>
       {list.map(o => {
-        const food = o.items.filter(i => isKitchen(i, products, cfg.kitchenCats)), drink = o.items.filter(i => !isKitchen(i, products, cfg.kitchenCats));
+        const food = o.items.filter(i => isKitchen(i, products, cfg.kitchenCls)), drink = o.items.filter(i => !isKitchen(i, products, cfg.kitchenCls));
         return <article key={o.id} className="tk" style={{ marginBottom: 0 }}>
           <div className="row sb"><span className="n">nº {o.num}</span><span className="mute">{hm(o.at)} · por {o.by}</span></div>
           <div style={{ marginTop: 4 }}><b>{o.client}</b>{o.note && <> · <span className="mute">{o.note}</span></>}</div>
@@ -326,8 +331,8 @@ function Comandas({ orders, onEdit, onCharge }: { orders: Order[]; onEdit: (o: O
           <ul>
             {food.map((i, k) => { const s = rstat(o, i); return <li key={'f' + k} className="row sb" style={{ flexWrap: 'nowrap' }}>
               <span><b>{i.qty}×</b> {i.name}{i.rem.length ? <span className="rm"> · sem {i.rem.map(x => x.toLowerCase()).join(', ')}</span> : null}</span>
-              <span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><span className="bd" style={{ background: 'color-mix(in srgb,' + STATUS[s].c + ' 35%,transparent)', color: 'var(--ink)' }}>{STATUS[s].n}</span><span className="mute">{brl(i.qty * i.price)}</span></span></li>; })}
-            {drink.map((i, k) => <li key={'d' + k} className="row sb" style={{ flexWrap: 'nowrap' }}><span><b>{i.qty}×</b> {i.name}</span><span className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><span className="bd g">Balcão</span><span className="mute">{brl(i.qty * i.price)}</span></span></li>)}
+              <span className="row" style={{ gap: 6, flexWrap: 'nowrap', flexShrink: 0, whiteSpace: 'nowrap' }}><span className="bd" style={{ background: 'color-mix(in srgb,' + STATUS[s].c + ' 35%,transparent)', color: 'var(--ink)' }}>{STATUS[s].n}</span><span className="mute">{brl(i.qty * i.price)}</span></span></li>; })}
+            {drink.map((i, k) => <li key={'d' + k} className="row sb" style={{ flexWrap: 'nowrap' }}><span><b>{i.qty}×</b> {i.name}</span><span className="row" style={{ gap: 6, flexWrap: 'nowrap', flexShrink: 0, whiteSpace: 'nowrap' }}><span className="bd g">Balcão</span><span className="mute">{brl(i.qty * i.price)}</span></span></li>)}
           </ul>
           <div className="row sb"><span className="mute">Total</span><b style={{ fontSize: 20 }}>{brl(orderTotal(o))}</b></div>
           {o.status !== 'cancelado' && <div className="acts">
